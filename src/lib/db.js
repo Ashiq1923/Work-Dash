@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, supabaseAdmin } from './supabase';
 
 // ─── Helpers ───
 export const fetchHelpers = async (userId) => {
@@ -286,11 +286,11 @@ export const upsertGoal = async (userId, month, goal) => {
   await supabase.from('analytics_goals').upsert({ user_id: userId, month, billing_goal: goal }, { onConflict: 'user_id,month' });
 };
 
-// ─── User Settings ───
+// ─── User Settings (uses admin client to bypass RLS for cross-user access) ───
 export const fetchSettings = async (userId) => {
-  const { data } = await supabase.from('user_settings').select('*').eq('user_id', userId).single();
+  const { data } = await supabaseAdmin.from('user_settings').select('*').eq('user_id', userId).single();
   return data || { theme: 'light', settings: {} };
 };
 export const upsertSettings = async (userId, settings) => {
-  await supabase.from('user_settings').upsert({ user_id: userId, ...settings }, { onConflict: 'user_id' });
+  await supabaseAdmin.from('user_settings').upsert({ user_id: userId, ...settings }, { onConflict: 'user_id' });
 };
