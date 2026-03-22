@@ -89,9 +89,19 @@ export function AuthProvider({ children }) {
 
   const deleteUser = async (id) => {
     if (id === currentUser?.id) return { success: false, message: 'Cannot delete yourself' };
-    // Delete profile (user stays in auth but loses access via RLS)
-    const { error } = await supabase.from('profiles').delete().eq('id', id);
-    if (error) return { success: false, message: error.message };
+    // Delete from Supabase Auth via admin API (also cascades to profiles)
+    const serviceKey = import.meta.env.VITE_SUPABASE_SERVICE_KEY;
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/auth/v1/admin/users/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${serviceKey}`,
+        'apikey': serviceKey,
+      },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return { success: false, message: err.message || err.msg || 'Failed to delete user' };
+    }
     await loadProfiles();
     if (viewingUserId === id) setViewingUserId(null);
     return { success: true };
