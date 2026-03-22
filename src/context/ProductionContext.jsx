@@ -107,8 +107,11 @@ export function ProductionProvider({ children }) {
       sheet = { id: s.id, userId: s.user_id, month: s.month, operatorId: s.operator_id, machine: s.machine, days: {} };
       dispatch({ type: 'ADD_SHEET', payload: sheet });
     }
-    await db.upsertDayEntry(sheet.id, day, entry);
-    const updated = { ...sheet, days: { ...sheet.days, [String(day)]: entry } };
+    // Compute and save effective genHead based on current mode
+    const op = state.operators.find(o => o.id === operatorId);
+    const entryWithHead = { ...entry, genHead: entry.genHead ?? computeEffHead(op?.head, entry.type) };
+    await db.upsertDayEntry(sheet.id, day, entryWithHead);
+    const updated = { ...sheet, days: { ...sheet.days, [String(day)]: entryWithHead } };
     dispatch({ type: 'UPDATE_SHEET', payload: updated });
   };
 
@@ -123,33 +126,8 @@ export function ProductionProvider({ children }) {
 
   const deleteSheet = async (id) => { await db.removeSheet(id); dispatch({ type: 'DELETE_SHEET', payload: id }); };
 
-  const calcGenIncome = (production, head, type, rate) => {
-    const mh = Number(head);
-    let effectiveHead = mh;
-    if (type === 'alternet') {
-      const used = mh / 2;
-      if (genIncomeMode === 'half_remaining') {
-        // Used heads + half of remaining (e.g. 24: 12+6=18)
-        effectiveHead = used + (mh - used) / 2;
-      } else {
-        // Standard: just the used heads (e.g. 24: 12)
-        effectiveHead = used;
-      }
-    } else if (type === 'duble_alternet') {
-      const used = mh / 3;
-      if (genIncomeMode === 'half_remaining') {
-        // Used heads + half of remaining (e.g. 24: 8+8=16)
-        effectiveHead = used + (mh - used) / 2;
-      } else {
-        // Standard: just the used heads (e.g. 24: 8)
-        effectiveHead = used;
-      }
-    }
-    return (Number(production) / 1000) * Number(rate) * effectiveHead;
-  };
-
-  // Get effective head count for display (e.g. "18 Head" instead of "Alternet")
-  const getEffectiveHead = (head, type) => {
+  // Compute effective head based on CURRENT mode (used when saving new entries)
+  const computeEffHead = (head, type) => {
     const mh = Number(head);
     if (type === 'all_head') return mh;
     if (type === 'alternet') {
@@ -161,6 +139,17 @@ export function ProductionProvider({ children }) {
       return genIncomeMode === 'half_remaining' ? used + (mh - used) / 2 : used;
     }
     return mh;
+  };
+
+  // Calculate gen income — uses SAVED genHead if present, otherwise computes from current mode
+  const calcGenIncome = (production, head, type, rate, savedGenHead) => {
+    const effectiveHead = savedGenHead != null ? Number(savedGenHead) : computeEffHead(head, type);
+    return (Number(production) / 1000) * Number(rate) * effectiveHead;
+  };
+
+  // Get effective head for display — uses SAVED genHead if present
+  const getEffectiveHead = (head, type, savedGenHead) => {
+    return savedGenHead != null ? Number(savedGenHead) : computeEffHead(head, type);
   };
 
   return (

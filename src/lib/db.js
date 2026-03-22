@@ -39,6 +39,7 @@ export const fetchSheets = async (userId) => {
         production: de.production, useDefaultHelper: de.use_default_helper,
         extraHelperId: de.extra_helper_id, type: de.type, rate: de.rate,
         substituteOperatorId: de.substitute_operator_id,
+        genHead: de.gen_head,
       };
     });
     return { id: s.id, userId: s.user_id, month: s.month, operatorId: s.operator_id, machine: s.machine, days };
@@ -57,6 +58,7 @@ export const upsertDayEntry = async (sheetId, day, entry) => {
     production: entry.production, use_default_helper: entry.useDefaultHelper,
     extra_helper_id: entry.extraHelperId || null, type: entry.type, rate: entry.rate,
     substitute_operator_id: entry.substituteOperatorId || null,
+    gen_head: entry.genHead || null,
   }, { onConflict: 'sheet_id,day' });
   if (error) throw error;
 };
