@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, Factory, FileText, Users, BarChart3, Settings, X, ChevronLeft, Wallet, Scissors, BookOpen, ClipboardList } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { ROUTES } from '../../utils/constants';
 import './Sidebar.css';
 
@@ -17,7 +18,8 @@ const NAV_ITEMS = [
 ];
 
 export function Sidebar({ collapsed, mobileOpen, isMobile, onClose, onToggle }) {
-  const visibleItems = NAV_ITEMS;
+  const { isAdmin, users, viewingUserId, setViewingUserId } = useAuth();
+  const selectableUsers = users.filter(u => u.type !== 'admin');
 
   return (
     <aside
@@ -41,8 +43,24 @@ export function Sidebar({ collapsed, mobileOpen, isMobile, onClose, onToggle }) 
         )}
       </div>
 
+      {/* Admin user selector - shown in sidebar on mobile */}
+      {isAdmin && selectableUsers.length > 0 && (isMobile || !collapsed) && (
+        <div className="sidebar__user-select">
+          <select
+            className="sidebar__user-dropdown"
+            value={viewingUserId || ''}
+            onChange={e => setViewingUserId(e.target.value || null)}
+          >
+            <option value="">-- Select User --</option>
+            {selectableUsers.map(u => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <nav className="sidebar__nav">
-        {visibleItems.map(({ to, icon: Icon, label }) => (
+        {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
