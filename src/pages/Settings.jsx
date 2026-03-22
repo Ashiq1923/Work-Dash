@@ -4,8 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/FormField';
 import { Modal } from '../components/ui/Modal';
-import { STORAGE_KEYS } from '../utils/constants';
-import { Trash2, Plus, LogOut, Shield, User } from 'lucide-react';
+
+import { Trash2, Plus, LogOut, Shield, User, KeyRound } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Settings.css';
 
@@ -41,29 +41,29 @@ function RegisterForm({ onSave, onCancel }) {
 
 export default function Settings() {
   const { theme, toggleTheme } = useTheme();
-  const { currentUser, users, logout, updateProfile, registerUser, deleteUser, isAdmin, isLoggedIn } = useAuth();
+  const { profile: userProfile, users, logout, updateProfile, registerUser, deleteUser, changePassword, isAdmin, isLoggedIn } = useAuth();
   const [showRegister, setShowRegister] = useState(false);
-
+  const [showPasswordModal, setShowPasswordModal] = useState(null); // userId or null
 
   const [profile, setProfile] = useState({
-    name: currentUser?.name || '',
-    email: currentUser?.email || '',
+    name: userProfile?.name || '',
+    email: userProfile?.email || '',
     password: '',
   });
 
-  const handleSaveProfile = (e) => {
+  const handleSaveProfile = async (e) => {
     e.preventDefault();
     if (!profile.name.trim() || !profile.email.trim()) {
       toast.error('Name and email are required');
       return;
     }
-    updateProfile(profile);
+    await updateProfile(profile);
     toast.success('Profile updated!');
     setProfile(p => ({ ...p, password: '' }));
   };
 
-  const handleRegister = (data) => {
-    const result = registerUser(data);
+  const handleRegister = async (data) => {
+    const result = await registerUser(data);
     if (result.success) {
       toast.success(`User "${data.name}" registered!`);
       setShowRegister(false);
@@ -72,21 +72,16 @@ export default function Settings() {
     }
   };
 
-  const handleDeleteUser = (id) => {
+  const handleDeleteUser = async (id) => {
     if (window.confirm('Delete this user?')) {
-      const result = deleteUser(id);
+      const result = await deleteUser(id);
       if (result.success) toast.success('User deleted');
       else toast.error(result.message);
     }
   };
 
   const handleClearData = () => {
-    if (window.confirm('This will permanently delete ALL your data (production, articles, salary). Are you sure?')) {
-      Object.values(STORAGE_KEYS).forEach(k => {
-        if (k !== STORAGE_KEYS.USERS && k !== STORAGE_KEYS.CURRENT_USER) localStorage.removeItem(k);
-      });
-      toast.success('All data cleared. Refresh the page to start fresh.');
-    }
+    toast('Data is stored in Supabase cloud. Contact admin to clear data.', { icon: 'ℹ️' });
   };
 
   const handleLogout = () => {
@@ -115,10 +110,10 @@ export default function Settings() {
               {isAdmin ? <Shield size={22} /> : <User size={22} />}
             </div>
             <div>
-              <p className="settings-user-name">{currentUser?.name}</p>
-              <p className="settings-user-email">{currentUser?.email}</p>
+              <p className="settings-user-name">{userProfile?.name}</p>
+              <p className="settings-user-email">{userProfile?.email}</p>
               <span className={`badge ${isAdmin ? 'badge--accent' : 'badge--default'}`}>
-                {currentUser?.type}
+                {userProfile?.type}
               </span>
             </div>
           </div>
@@ -189,14 +184,15 @@ export default function Settings() {
                     <span className={`badge ${u.type === 'admin' ? 'badge--accent' : 'badge--default'}`}>{u.type}</span>
                   </div>
                   <div className="settings-user-row__actions">
-                    {u.id === currentUser.id ? (
+                    <button className="action-btn" onClick={() => setShowPasswordModal(u.id)} title="Change Password"><KeyRound size={15} /></button>
+                    {u.id === userProfile?.id ? (
                       <span className="badge badge--success">You</span>
                     ) : (
                       <button
                         className="action-btn action-btn--danger"
                         onClick={() => handleDeleteUser(u.id)}
-                        title={u.id === 'admin-001' ? 'Cannot delete default admin' : 'Delete user'}
-                        disabled={u.id === 'admin-001'}
+                        title={u.type === 'admin' ? 'Cannot delete admin' : 'Delete user'}
+                        disabled={u.type === 'admin'}
                       >
                         <Trash2 size={15} />
                       </button>
@@ -237,16 +233,35 @@ export default function Settings() {
       </div>
 
       {/* Register User Modal */}
-      <Modal
-        isOpen={showRegister}
-        onClose={() => setShowRegister(false)}
-        title="Register New User"
-      >
-        <RegisterForm
-          onSave={handleRegister}
-          onCancel={() => setShowRegister(false)}
-        />
+      <Modal isOpen={showRegister} onClose={() => setShowRegister(false)} title="Register New User">
+        <RegisterForm onSave={handleRegister} onCancel={() => setShowRegister(false)} />
+      </Modal>
+
+      {/* Change Password Modal */}
+      <Modal isOpen={!!showPasswordModal} onClose={() => setShowPasswordModal(null)} title={`Change Password — ${users.find(u => u.id === showPasswordModal)?.name || ''}`} size="sm">
+        <PasswordForm onSave={async (newPw) => {
+          const result = await changePassword(showPasswordModal, newPw);
+          if (result.success) { toast.success('Password changed!'); setShowPasswordModal(null); }
+          else toast.error(result.message);
+        }} onCancel={() => setShowPasswordModal(null)} />
       </Modal>
     </div>
+  );
+}
+
+function PasswordForm({ onSave, onCancel }) {
+  const [pw, setPw] = useState('');
+  const [confirm, setConfirm] = useState('');
+  return (
+    <form onSubmit={e => {
+      e.preventDefault();
+      if (pw.length < 6) { toast.error('Minimum 6 characters'); return; }
+      if (pw !== confirm) { toast.error('Passwords do not match'); return; }
+      onSave(pw);
+    }} className="form-grid">
+      <Input label="New Password *" type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="Min 6 characters" required autoFocus />
+      <Input label="Confirm Password *" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Re-enter password" required />
+      <div className="form-actions"><Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button><Button type="submit">Change Password</Button></div>
+    </form>
   );
 }

@@ -7,6 +7,7 @@ import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/FormField';
 import { currentMonthKey, getLastNMonths } from '../utils/dateUtils';
 import { exportToExcel } from '../utils/excelUtils';
+import { PageLoader } from '../components/ui/Spinner';
 import toast from 'react-hot-toast';
 import './Production.css';
 
@@ -173,7 +174,7 @@ function daysInMonth(mk) { const [y, m] = mk.split('-').map(Number); return new 
 
 /* ─── Main ─── */
 export default function Production() {
-  const { helpers, operators, sheets, addHelper, deleteHelper, getHelperName, addOperator, deleteOperator, addDayEntry, deleteDayEntry, deleteSheet, calcGenIncome, getOperator } = useProduction();
+  const { helpers, operators, sheets, loading: prodLoading, addHelper, deleteHelper, getHelperName, addOperator, deleteOperator, addDayEntry, deleteDayEntry, deleteSheet, calcGenIncome, getOperator } = useProduction();
   const { activeDataKey } = useAuth();
 
   const [monthFilter, setMonthFilter] = useState(currentMonthKey());
@@ -245,6 +246,7 @@ export default function Production() {
   };
 
   if (!activeDataKey) return <div className="page-container"><div className="card"><div className="empty-state"><p>Select a user first.</p></div></div></div>;
+  if (prodLoading) return <div className="page-container"><PageLoader text="Loading Production..." /></div>;
 
   let grandProd = 0, grandGI = 0;
   monthSheets.forEach(s => { const op = getOperator(s.operatorId); if (!op) return; Object.values(s.days).forEach(d => { grandProd += Number(d.production || 0); grandGI += calcGenIncome(d.production, op.head, d.type, d.rate); }); });

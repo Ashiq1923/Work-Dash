@@ -8,6 +8,7 @@ import { Input, Select } from '../components/ui/FormField';
 import { formatDate, currentMonthKey, isInMonth, getLastNMonths, todayStr } from '../utils/dateUtils';
 import { exportToExcel, exportSingleArticle } from '../utils/excelUtils';
 import { generateId } from '../utils/constants';
+import { PageLoader } from '../components/ui/Spinner';
 import toast from 'react-hot-toast';
 import './Income.css';
 
@@ -470,7 +471,7 @@ function PartyFolder({ party, articles, onEdit, onDelete, onExportArticle, onPri
 
 /* ─── Main Page ─── */
 export default function Income() {
-  const { entries, allEntries, addEntry, updateEntry, deleteEntry, toggleStatus, canEditEntry, parties, addParty, deleteParty, getPartyName } = useIncome();
+  const { entries, loading: incLoading, addEntry, updateEntry, deleteEntry, toggleStatus, canEditEntry, parties, addParty, deleteParty, getPartyName } = useIncome();
   const { isAdmin } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [showPartyModal, setShowPartyModal] = useState(false);
@@ -572,6 +573,8 @@ export default function Income() {
   const handlePrintSingle = useCallback((article) => {
     printArticle(article, getPartyName(article.partyId));
   }, [getPartyName]);
+
+  if (incLoading) return <div className="page-container"><PageLoader text="Loading Articles..." /></div>;
 
   return (
     <div className="page-container">

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Download, Printer, ChevronDown, ChevronUp, Plus, Trash2, Pencil } from 'lucide-react';
 import { useProduction } from '../context/ProductionContext';
 import { useAuth } from '../context/AuthContext';
@@ -6,9 +6,9 @@ import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { Input } from '../components/ui/FormField';
 import { currentMonthKey, getLastNMonths } from '../utils/dateUtils';
-import { STORAGE_KEYS, generateId } from '../utils/constants';
-import { loadFromStorage, saveToStorage } from '../utils/storageUtils';
+import * as db from '../lib/db';
 import { exportToExcel } from '../utils/excelUtils';
+import { PageLoader } from '../components/ui/Spinner';
 import toast from 'react-hot-toast';
 import './SalarySheet.css';
 
@@ -19,7 +19,10 @@ function isSunday(y, m, d) { return new Date(y, m - 1, d).getDay() === 0; }
 export default function SalarySheet() {
   const { operators, sheets, getHelperName } = useProduction();
   const { activeDataKey } = useAuth();
-  const [data, setData] = useState(() => loadFromStorage(STORAGE_KEYS.SALARY_SHEET, { workers: [], workerSalary: [], advances: [] }));
+  const [workers, setWorkers] = useState([]);
+  const [allWorkerSalary, setAllWorkerSalary] = useState([]);
+  const [allAdvances, setAllAdvances] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [monthFilter, setMonthFilter] = useState(currentMonthKey());
   const [openSheets, setOpenSheets] = useState({});
   const [showWorkerForm, setShowWorkerForm] = useState(false);
@@ -30,15 +33,18 @@ export default function SalarySheet() {
   const [year, monthNum] = monthFilter.split('-').map(Number);
   const numDays = new Date(year, monthNum, 0).getDate();
 
-  const save = (d) => { saveToStorage(STORAGE_KEYS.SALARY_SHEET, d); setData(d); };
-
-  const workers = useMemo(() => (data.workers || []).filter(w => w.userId === activeDataKey), [data.workers, activeDataKey]);
-  const allWorkerSalary = useMemo(() => (data.workerSalary || []).filter(w => w.userId === activeDataKey), [data.workerSalary, activeDataKey]);
-  const allAdvances = useMemo(() => (data.advances || []).filter(a => a.userId === activeDataKey), [data.advances, activeDataKey]);
+  useEffect(() => {
+    if (!activeDataKey) { setWorkers([]); setAllWorkerSalary([]); setAllAdvances([]); setLoading(false); return; }
+    setLoading(true);
+    Promise.all([db.fetchWorkers(activeDataKey), db.fetchWorkerSalaryEntries(activeDataKey), db.fetchAdvances(activeDataKey)])
+      .then(([w, s, a]) => {
+        setWorkers(w.map(x => ({ id: x.id, name: x.name, userId: x.user_id })));
+        setAllWorkerSalary(s); setAllAdvances(a); setLoading(false);
+      });
+  }, [activeDataKey]);
 
   const toggleSheet = (id) => setOpenSheets(p => ({ ...p, [id]: !p[id] }));
 
-  // ─── Operator salary from production ───
   const calcOpSalary = (op) => {
     const sheet = sheets.find(s => s.operatorId === op.id && s.month === monthFilter);
     let totalProd = 0, totalBonus = 0, totalSalary = 0, workDays = 0;
@@ -52,7 +58,6 @@ export default function SalarySheet() {
       const rate = Number(op.head) === 30 ? 280 : 240;
       totalProd += disp; totalBonus += bonus; totalSalary += (disp / 100000) * rate + bonus; workDays++;
     }
-    // Substitutes
     sheets.forEach(s => {
       if (s.operatorId === op.id || s.month !== monthFilter) return;
       Object.entries(s.days || {}).forEach(([dayStr, dd]) => {
@@ -66,13 +71,11 @@ export default function SalarySheet() {
         }
       });
     });
-    // Advances for this operator
     const opAdvances = allAdvances.filter(a => a.personId === op.id && a.personType === 'operator' && a.date?.startsWith(monthFilter));
     const totalAdvance = opAdvances.reduce((s, a) => s + Number(a.amount || 0), 0);
     return { totalProd, totalBonus, totalSalary, workDays, advances: opAdvances, totalAdvance, netSalary: totalSalary - totalAdvance };
   };
 
-  // ─── Worker salary entries ───
   const getWorkerSalary = (workerId) => {
     const entries = allWorkerSalary.filter(e => e.workerId === workerId && e.date?.startsWith(monthFilter));
     const total = entries.reduce((s, e) => s + Number(e.amount || 0), 0);
@@ -81,7 +84,6 @@ export default function SalarySheet() {
     return { entries, total, advances, totalAdvance, netSalary: total - totalAdvance };
   };
 
-  // Grand totals
   const grandTotals = useMemo(() => {
     let opSalary = 0, opNet = 0, wSalary = 0, wNet = 0;
     operators.forEach(op => { const d = calcOpSalary(op); opSalary += d.totalSalary; opNet += d.netSalary; });
@@ -90,41 +92,55 @@ export default function SalarySheet() {
   }, [operators, workers, sheets, allWorkerSalary, allAdvances, monthFilter]);
 
   // Worker CRUD
-  const addWorker = (name) => {
+  const addWorker = async (name) => {
     if (workers.some(w => w.name.toLowerCase() === name.toLowerCase())) { toast.error('Already exists'); return; }
-    save({ ...data, workers: [...(data.workers || []), { id: generateId(), name: name.trim(), userId: activeDataKey }] });
-    toast.success(`"${name}" added`); setShowWorkerForm(false);
+    try {
+      const row = await db.insertWorker(activeDataKey, name.trim());
+      setWorkers(prev => [...prev, { id: row.id, name: row.name, userId: row.user_id }]);
+      toast.success(`"${name}" added`); setShowWorkerForm(false);
+    } catch { toast.error('Failed'); }
   };
-  const deleteWorker = (id) => {
+  const deleteWorker = async (id) => {
     if (window.confirm('Delete worker?')) {
-      save({ ...data, workers: (data.workers || []).filter(w => w.id !== id), workerSalary: (data.workerSalary || []).filter(e => e.workerId !== id), advances: (data.advances || []).filter(a => !(a.personId === id && a.personType === 'worker')) });
+      await db.removeWorker(id);
+      setWorkers(prev => prev.filter(w => w.id !== id));
+      setAllWorkerSalary(prev => prev.filter(e => e.workerId !== id));
+      setAllAdvances(prev => prev.filter(a => !(a.personId === id && a.personType === 'worker')));
       toast.success('Deleted');
     }
   };
 
-  // Worker salary entry
-  const addWorkerSalary = (entry) => {
-    save({ ...data, workerSalary: [...(data.workerSalary || []), { ...entry, id: generateId(), userId: activeDataKey }] });
-    toast.success('Salary entry added');
+  const addWorkerSalary = async (entry) => {
+    try {
+      const row = await db.insertWorkerSalaryEntry(activeDataKey, entry);
+      const mapped = { id: row.id, userId: row.user_id, workerId: row.worker_id, date: row.date, description: row.description, amount: row.amount };
+      setAllWorkerSalary(prev => [...prev, mapped]);
+      toast.success('Salary entry added');
+    } catch { toast.error('Failed'); }
   };
-  const updateWorkerSalary = (entry) => {
-    save({ ...data, workerSalary: (data.workerSalary || []).map(e => e.id === editingWorkerSalary.id ? { ...editingWorkerSalary, ...entry } : e) });
-    toast.success('Updated'); setEditingWorkerSalary(null); setShowSalaryForm(false);
+  const updateWorkerSalary = async (entry) => {
+    try {
+      await db.updateWorkerSalaryEntry(editingWorkerSalary.id, entry);
+      setAllWorkerSalary(prev => prev.map(e => e.id === editingWorkerSalary.id ? { ...e, ...entry } : e));
+      toast.success('Updated'); setEditingWorkerSalary(null); setShowSalaryForm(false);
+    } catch { toast.error('Failed'); }
   };
-  const deleteWorkerSalary = (id) => {
-    if (window.confirm('Delete?')) { save({ ...data, workerSalary: (data.workerSalary || []).filter(e => e.id !== id) }); toast.success('Deleted'); }
-  };
-
-  // Advance
-  const addAdvance = (entry) => {
-    save({ ...data, advances: [...(data.advances || []), { ...entry, id: generateId(), userId: activeDataKey }] });
-    toast.success('Advance added');
-  };
-  const deleteAdvance = (id) => {
-    if (window.confirm('Delete?')) { save({ ...data, advances: (data.advances || []).filter(a => a.id !== id) }); toast.success('Deleted'); }
+  const deleteWorkerSalary = async (id) => {
+    if (window.confirm('Delete?')) { await db.removeWorkerSalaryEntry(id); setAllWorkerSalary(prev => prev.filter(e => e.id !== id)); toast.success('Deleted'); }
   };
 
-  // Print/Export helpers
+  const addAdvance = async (entry) => {
+    try {
+      const row = await db.insertAdvance(activeDataKey, entry);
+      const mapped = { id: row.id, userId: row.user_id, personId: row.person_id, personType: row.person_type, date: row.date, description: row.description, amount: row.amount };
+      setAllAdvances(prev => [...prev, mapped]);
+      toast.success('Advance added');
+    } catch { toast.error('Failed'); }
+  };
+  const deleteAdvance = async (id) => {
+    if (window.confirm('Delete?')) { await db.removeAdvance(id); setAllAdvances(prev => prev.filter(a => a.id !== id)); toast.success('Deleted'); }
+  };
+
   const printPerson = (name, salary, advances, totalAdv, net, extra) => {
     const advRows = advances.map(a => `<tr><td>${a.date}</td><td>${a.description || 'Advance'}</td><td class="neg">${fmtRS(a.amount)}</td></tr>`).join('');
     const html = `<!DOCTYPE html><html><head><title>Salary - ${name}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;padding:30px;color:#111}h1{font-size:18px;border-bottom:2px solid #333;padding-bottom:8px;margin-bottom:14px}table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px}th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}th{background:#f0f0f0}.neg{color:#dc2626}.net{font-size:16px;font-weight:800;border-top:3px solid #333}@media print{body{padding:10px}}</style></head><body><h1>Salary Sheet — ${name}</h1><p style="font-size:12px;color:#666;margin-bottom:12px">Month: ${monthFilter}${extra ? ' | ' + extra : ''}</p><table><tbody><tr><td><strong>Base Salary</strong></td><td><strong>${fmtRS(salary)}</strong></td></tr>${advRows ? `<tr><td colspan="2" style="background:#f8f8f8;font-weight:600">Advances</td></tr>${advRows}<tr><td>Total Advance</td><td class="neg">${fmtRS(totalAdv)}</td></tr>` : ''}<tr class="net"><td>NET SALARY</td><td style="color:${net >= 0 ? '#059669' : '#dc2626'}">${fmtRS(net)}</td></tr></tbody></table></body></html>`;
@@ -134,6 +150,7 @@ export default function SalarySheet() {
   };
 
   if (!activeDataKey) return <div className="page-container"><div className="card"><div className="empty-state"><p>Select a user first.</p></div></div></div>;
+  if (loading) return <div className="page-container"><PageLoader text="Loading Salary Sheet..." /></div>;
 
   return (
     <div className="page-container">
@@ -156,7 +173,6 @@ export default function SalarySheet() {
         <div className="stats-card"><div className="stats-card__content"><p className="stats-card__title">Total Net</p><p className="stats-card__value" style={{ color: 'var(--color-success)' }}>{fmtRS(grandTotals.totalNet)}</p><p className="stats-card__subtitle">After advances</p></div></div>
       </div>
 
-      {/* ─── Operators (auto from production) ─── */}
       <h3 className="ss-section-title">Operators (Auto from Production)</h3>
       <div className="ss-list">
         {operators.length === 0 ? <div className="card"><p className="ss-empty">No operators registered.</p></div> :
@@ -167,9 +183,7 @@ export default function SalarySheet() {
               <div key={op.id} className="ss-card card">
                 <div className="ss-card__header" onClick={() => toggleSheet(`op-${op.id}`)}>
                   <div className="ss-card__info">
-                    <span className="badge badge--accent">{op.machine}</span>
-                    <strong>{op.name}</strong>
-                    <span className="badge badge--default">{op.head}H</span>
+                    <span className="badge badge--accent">{op.machine}</span><strong>{op.name}</strong><span className="badge badge--default">{op.head}H</span>
                     <span className="ss-card__summary">Salary: {fmtRS(d.totalSalary)} | Adv: {fmtRS(d.totalAdvance)} | <strong style={{ color: 'var(--color-success)' }}>Net: {fmtRS(d.netSalary)}</strong></span>
                   </div>
                   <div className="ss-card__actions">
@@ -204,7 +218,6 @@ export default function SalarySheet() {
           })}
       </div>
 
-      {/* ─── Workers (manual) ─── */}
       <h3 className="ss-section-title" style={{ marginTop: 24 }}>Workers (Manual Entry)</h3>
       <div className="ss-list">
         {workers.length === 0 ? <div className="card"><p className="ss-empty">No workers. Add workers to manage their salary.</p></div> :
@@ -215,8 +228,7 @@ export default function SalarySheet() {
               <div key={w.id} className="ss-card card">
                 <div className="ss-card__header" onClick={() => toggleSheet(`w-${w.id}`)}>
                   <div className="ss-card__info">
-                    <span className="badge badge--warning">Worker</span>
-                    <strong>{w.name}</strong>
+                    <span className="badge badge--warning">Worker</span><strong>{w.name}</strong>
                     <span className="ss-card__summary">Salary: {fmtRS(d.total)} | Adv: {fmtRS(d.totalAdvance)} | <strong style={{ color: 'var(--color-success)' }}>Net: {fmtRS(d.netSalary)}</strong></span>
                   </div>
                   <div className="ss-card__actions">
@@ -258,17 +270,14 @@ export default function SalarySheet() {
           })}
       </div>
 
-      {/* Modals */}
       <Modal isOpen={showWorkerForm} onClose={() => setShowWorkerForm(false)} title="Add Worker" size="sm">
         <WorkerForm onSave={addWorker} onCancel={() => setShowWorkerForm(false)} />
       </Modal>
-
       <Modal isOpen={showSalaryForm} onClose={() => { setShowSalaryForm(false); setEditingWorkerSalary(null); }} title={editingWorkerSalary ? 'Edit Salary Entry' : 'Add Worker Salary'}>
         <SalaryEntryForm workers={workers} initial={editingWorkerSalary} onSave={editingWorkerSalary ? updateWorkerSalary : addWorkerSalary} onCancel={() => { setShowSalaryForm(false); setEditingWorkerSalary(null); }} />
       </Modal>
-
       <Modal isOpen={showAdvanceForm} onClose={() => setShowAdvanceForm(false)} title="Add Advance">
-        <AdvanceForm operators={operators} workers={workers} onSave={d => { addAdvance(d); setShowAdvanceForm(false); }} onCancel={() => setShowAdvanceForm(false)} />
+        <AdvanceForm operators={operators} workers={workers} onSave={async d => { await addAdvance(d); setShowAdvanceForm(false); }} onCancel={() => setShowAdvanceForm(false)} />
       </Modal>
     </div>
   );

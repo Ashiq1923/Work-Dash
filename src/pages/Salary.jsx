@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react';
-import { Download, Printer, ChevronDown, ChevronUp, Pencil, Check, X, RotateCcw } from 'lucide-react';
+import { Download, Printer, ChevronDown, ChevronUp, Pencil, Check, X, RotateCcw, Trash2 } from 'lucide-react';
 import { useProduction } from '../context/ProductionContext';
 import { useSalary } from '../context/SalaryContext';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { currentMonthKey, getLastNMonths } from '../utils/dateUtils';
 import { exportToExcel } from '../utils/excelUtils';
+import { PageLoader } from '../components/ui/Spinner';
 import toast from 'react-hot-toast';
 import './Salary.css';
 
@@ -36,24 +37,74 @@ function isSunday(y, m, d) { return new Date(y, m - 1, d).getDay() === 0; }
 function daysInMonth(mk) { const [y, m] = mk.split('-').map(Number); return new Date(y, m, 0).getDate(); }
 
 /* ─── Inline Edit Row ─── */
-function EditRow({ day, monthNum, currentProd, currentDesc, isOverride, onSave, onCancel, onReset }) {
-  const [prod, setProd] = useState(currentProd);
-  const [desc, setDesc] = useState(currentDesc);
-  return (
+function EditRow({ day, monthNum, dd, op, helpers, getHelperName, operators, onSave, onCancel, onDelete }) {
+  const [form, setForm] = useState({
+    production: dd?.production || 0,
+    useDefaultHelper: dd?.useDefaultHelper ?? true,
+    extraHelperId: dd?.extraHelperId || '',
+    type: dd?.type || 'alternet',
+    rate: dd?.rate || 0,
+    substituteOperatorId: dd?.substituteOperatorId || '',
+    isSubstitute: !!dd?.substituteOperatorId,
+    description: '',
+  });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const otherHelpers = helpers.filter(h => h.id !== op.defaultHelperId);
+
+  return (<>
     <tr className="salary-edit-row">
       <td className="salary-day-table__day">{day}-{monthNum}</td>
-      <td><input className="salary-edit-input" type="number" value={prod} onChange={e => setProd(e.target.value)} /></td>
-      <td colSpan={2}></td>
-      <td colSpan={2}><input className="salary-edit-input salary-edit-input--wide" type="text" value={desc} onChange={e => setDesc(e.target.value)} placeholder="Description / reason..." /></td>
+      <td><input className="salary-edit-input" type="number" value={form.production} onChange={e => set('production', e.target.value)} /></td>
+      <td colSpan={2}>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <select className="salary-edit-select" value={form.type} onChange={e => set('type', e.target.value)}>
+            <option value="alternet">Alt</option><option value="duble_alternet">D.Alt</option><option value="all_head">All</option>
+          </select>
+          <input className="salary-edit-input" type="number" step="0.01" value={form.rate} onChange={e => set('rate', e.target.value)} style={{ maxWidth: 65 }} placeholder="Rate" />
+        </div>
+      </td>
+      <td>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+            <input type="checkbox" checked={form.useDefaultHelper} onChange={e => { set('useDefaultHelper', e.target.checked); if (e.target.checked) set('extraHelperId', ''); }} style={{ width: 14, height: 14 }} />
+            <span style={{ fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{getHelperName(op.defaultHelperId)}</span>
+          </label>
+          {!form.useDefaultHelper && (
+            <select className="salary-edit-select" value={form.extraHelperId} onChange={e => set('extraHelperId', e.target.value)}>
+              <option value="">--</option>{otherHelpers.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+            </select>
+          )}
+        </div>
+      </td>
+      <td><input className="salary-edit-input salary-edit-input--wide" type="text" value={form.description} onChange={e => set('description', e.target.value)} placeholder="Desc..." /></td>
       <td>
         <div className="salary-edit-actions">
-          <button className="action-btn" style={{ color: 'var(--color-success)' }} onClick={() => onSave(Number(prod), desc)} title="Save"><Check size={15} /></button>
+          <button className="action-btn" style={{ color: 'var(--color-success)' }} onClick={() => onSave({
+            production: Number(form.production), useDefaultHelper: form.useDefaultHelper,
+            extraHelperId: form.useDefaultHelper ? null : (form.extraHelperId || null),
+            type: form.type, rate: Number(form.rate),
+            substituteOperatorId: form.isSubstitute ? form.substituteOperatorId : null,
+          }, form.description)} title="Save"><Check size={15} /></button>
           <button className="action-btn" onClick={onCancel} title="Cancel"><X size={15} /></button>
-          {isOverride && <button className="action-btn" style={{ color: 'var(--color-warning)' }} onClick={onReset} title="Reset to original"><RotateCcw size={14} /></button>}
         </div>
       </td>
     </tr>
-  );
+    <tr className="salary-edit-row" style={{ borderTop: 'none' }}>
+      <td colSpan={7} style={{ paddingTop: 0, paddingBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.8rem' }}>
+            <input type="checkbox" checked={form.isSubstitute} onChange={e => { set('isSubstitute', e.target.checked); if (!e.target.checked) set('substituteOperatorId', ''); }} style={{ width: 14, height: 14 }} />
+            <span>Absent — Substitute</span>
+          </label>
+          {form.isSubstitute && (
+            <select className="salary-edit-select" value={form.substituteOperatorId} onChange={e => set('substituteOperatorId', e.target.value)}>
+              <option value="">-- Select --</option>{operators.filter(o => o.id !== op.id).map(o => <option key={o.id} value={o.id}>{o.name} — {o.machine}</option>)}
+            </select>
+          )}
+        </div>
+      </td>
+    </tr>
+  </>);
 }
 
 /* ─── Print ─── */
@@ -84,7 +135,7 @@ function printSalarySheet(op, monthKey, numDays, monthNum, year, sheet, getHelpe
 
 /* ─── Main ─── */
 export default function Salary() {
-  const { operators, sheets, getHelperName, getOperator } = useProduction();
+  const { operators, sheets, helpers, loading: prodLoading, getHelperName, getOperator, deleteDayEntry, addDayEntry } = useProduction();
   const { setOverride, deleteOverride, getOverride } = useSalary();
   const { activeDataKey } = useAuth();
 
@@ -163,16 +214,23 @@ export default function Salary() {
     return { prod, bonus, salary };
   }, [filteredOperators, sheets, monthFilter]);
 
-  const handleEditSave = (opId, day, production, description) => {
-    setOverride(opId, monthFilter, day, { production, description });
+  const handleEditSave = async (opId, day, entry, description) => {
+    // Update actual production entry
+    await addDayEntry(opId, monthFilter, day, entry);
+    // Save description as override if provided
+    if (description) {
+      await setOverride(opId, monthFilter, day, { production: entry.production, description });
+    } else {
+      await deleteOverride(opId, monthFilter, day);
+    }
     setEditingRow(null);
-    toast.success('Salary entry updated (local only)');
+    toast.success('Updated');
   };
 
-  const handleReset = (opId, day) => {
-    deleteOverride(opId, monthFilter, day);
-    setEditingRow(null);
-    toast.success('Reset to original production');
+  const handleDeleteDay = (opId, day) => {
+    if (!window.confirm(`Delete production for day ${day}?`)) return;
+    const sheet = getSheet(opId);
+    if (sheet) { deleteDayEntry(sheet.id, day); toast.success('Deleted'); }
   };
 
   const exportSheet = (op) => {
@@ -218,7 +276,27 @@ export default function Salary() {
     toast.success('Exported!');
   };
 
+  // ─── Helper Attendance ───
+  const helperAttendance = useMemo(() => {
+    const map = {}; // helperId => { days, dDays }
+    helpers.forEach(h => { map[h.id] = { name: h.name, days: 0, dDays: 0 }; });
+    sheets.filter(s => s.month === monthFilter).forEach(s => {
+      const op = getOperator(s.operatorId);
+      if (!op) return;
+      Object.values(s.days || {}).forEach(dd => {
+        if (dd.useDefaultHelper && op.defaultHelperId && map[op.defaultHelperId]) {
+          map[op.defaultHelperId].days++;
+        }
+        if (!dd.useDefaultHelper && dd.extraHelperId && map[dd.extraHelperId]) {
+          map[dd.extraHelperId].dDays++;
+        }
+      });
+    });
+    return Object.entries(map).map(([id, v]) => ({ id, ...v, total: v.days + v.dDays })).filter(h => h.days > 0 || h.dDays > 0);
+  }, [helpers, sheets, monthFilter, operators]);
+
   if (!activeDataKey) return <div className="page-container"><div className="card"><div className="empty-state"><p>Select a user first.</p></div></div></div>;
+  if (prodLoading) return <div className="page-container"><PageLoader text="Loading Salary..." /></div>;
 
   return (
     <div className="page-container">
@@ -284,7 +362,7 @@ export default function Salary() {
                   <div className="salary-sheet__body">
                     <div className="table-wrapper">
                       <table className="data-table salary-day-table">
-                        <thead><tr><th>Date</th><th>Production</th><th>Bonus</th><th>Salary</th><th>Helper</th><th>Description</th><th></th></tr></thead>
+                        <thead><tr><th>Date</th><th>Production</th><th>Bonus</th><th>Salary</th><th>Helper</th><th>Desc</th><th></th></tr></thead>
                         <tbody>
                           {Array.from({ length: numDays }, (_, i) => i + 1).map(day => {
                             const sunday = isSunday(year, monthNum, day);
@@ -294,10 +372,8 @@ export default function Salary() {
                             const isAbsent = dd?.substituteOperatorId;
 
                             if (editingRow?.opId === op.id && editingRow?.day === day) {
-                              const curProd = ov ? ov.production : (dd ? dd.production : 0);
-                              const curDesc = ov?.description || '';
-                              return <EditRow key={day} day={day} monthNum={monthNum} currentProd={curProd} currentDesc={curDesc} isOverride={!!ov}
-                                onSave={(p, d) => handleEditSave(op.id, day, p, d)} onCancel={() => setEditingRow(null)} onReset={() => handleReset(op.id, day)} />;
+                              return <EditRow key={day} day={day} monthNum={monthNum} dd={dd} op={op} helpers={helpers} getHelperName={getHelperName} operators={operators}
+                                onSave={(entry, desc) => handleEditSave(op.id, day, entry, desc)} onCancel={() => setEditingRow(null)} onDelete={() => handleDeleteDay(op.id, day)} />;
                             }
 
                             if (isAbsent) {
@@ -328,7 +404,7 @@ export default function Salary() {
                                 <td style={{ fontWeight: 700, color: 'var(--color-accent)' }}>{fmtRS(salary)}</td>
                                 <td><span className={`badge badge--${dd?.useDefaultHelper !== false ? 'default' : 'warning'}`}>{hn}</span></td>
                                 <td className="salary-desc-cell">{desc ? <span className="salary-desc">{desc}</span> : <span style={{ color: 'var(--color-text-muted)' }}>—</span>}</td>
-                                <td><button className="action-btn" onClick={() => setEditingRow({ opId: op.id, day })} title="Edit"><Pencil size={13} /></button></td>
+                                <td><div style={{ display: 'flex', gap: 3 }}><button className="action-btn" onClick={() => setEditingRow({ opId: op.id, day })} title="Edit"><Pencil size={13} /></button><button className="action-btn action-btn--danger" onClick={() => handleDeleteDay(op.id, day)} title="Delete"><Trash2 size={13} /></button></div></td>
                               </tr>
                             );
                           })}
@@ -370,6 +446,30 @@ export default function Salary() {
             );
           })}
         </div>
+      )}
+
+      {/* ─── Helper Attendance ─── */}
+      {helperAttendance.length > 0 && (
+        <>
+          <h3 className="salary-section-title" style={{ marginTop: 24 }}>Helper Attendance — {monthFilter}</h3>
+          <div className="card">
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead><tr><th>Helper</th><th>Present</th><th>D (Duble Machine)</th><th>Total</th></tr></thead>
+                <tbody>
+                  {helperAttendance.map(h => (
+                    <tr key={h.id}>
+                      <td style={{ fontWeight: 600 }}>{h.name}</td>
+                      <td>{h.days} {h.days === 1 ? 'day' : 'days'}</td>
+                      <td>{h.dDays > 0 ? <span className="badge badge--warning">{h.dDays} {h.dDays === 1 ? 'day' : 'days'}</span> : '0'}</td>
+                      <td style={{ fontWeight: 700 }}>{h.total} {h.total === 1 ? 'day' : 'days'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

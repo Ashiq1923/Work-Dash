@@ -8,6 +8,7 @@ import { formatDate } from '../utils/dateUtils';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
 } from 'recharts';
+import { PageLoader } from '../components/ui/Spinner';
 import './Dashboard.css';
 
 function getLastNDays(n) {
@@ -33,7 +34,7 @@ const fmtRS = (v) => `Rs ${Number(v).toLocaleString('en-IN', { minimumFractionDi
 
 export default function Dashboard() {
   const { entries: articleEntries, getPartyName } = useIncome();
-  const { sheets: prodSheets, operators: prodOperators, calcGenIncome, getHelperName } = useProduction();
+  const { sheets: prodSheets, operators: prodOperators, loading: prodLoading, calcGenIncome, getHelperName } = useProduction();
   const { activeDataKey, activeUserName } = useAuth();
 
   const last7 = useMemo(() => getLastNDays(7), []);
@@ -97,6 +98,8 @@ export default function Dashboard() {
       'Gen Income': Math.round(d.totalGI),
     })),
   [dailyProdData]);
+
+  if (prodLoading) return <div className="page-container"><PageLoader text="Loading Dashboard..." /></div>;
 
   return (
     <div className="page-container">

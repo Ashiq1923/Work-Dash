@@ -1,13 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Plus, Trash2, Download, Pencil, ChevronDown, ChevronUp, Printer } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { Input } from '../components/ui/FormField';
 import { currentMonthKey, getLastNMonths } from '../utils/dateUtils';
-import { STORAGE_KEYS, generateId } from '../utils/constants';
-import { loadFromStorage, saveToStorage } from '../utils/storageUtils';
+import * as db from '../lib/db';
 import { exportToExcel } from '../utils/excelUtils';
+import { PageLoader } from '../components/ui/Spinner';
 import toast from 'react-hot-toast';
 import './Ledger.css';
 
@@ -15,7 +15,9 @@ const fmtRS = (v) => `Rs ${Number(v).toLocaleString('en-IN', { minimumFractionDi
 
 export default function Ledger() {
   const { activeDataKey } = useAuth();
-  const [data, setData] = useState(() => loadFromStorage(STORAGE_KEYS.LEDGER, { accounts: [], entries: [] }));
+  const [accounts, setAccounts] = useState([]);
+  const [allEntries, setAllEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showAccForm, setShowAccForm] = useState(false);
   const [showEntryForm, setShowEntryForm] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
@@ -24,20 +26,21 @@ export default function Ledger() {
   const [monthFilter, setMonthFilter] = useState(currentMonthKey());
   const months = useMemo(() => getLastNMonths(12), []);
 
-  const save = (d) => { saveToStorage(STORAGE_KEYS.LEDGER, d); setData(d); };
+  useEffect(() => {
+    if (!activeDataKey) { setAccounts([]); setAllEntries([]); setLoading(false); return; }
+    setLoading(true);
+    Promise.all([db.fetchLedgerAccounts(activeDataKey), db.fetchLedgerEntries(activeDataKey)])
+      .then(([accs, ents]) => {
+        setAccounts(accs.map(a => ({ id: a.id, name: a.name, userId: a.user_id })));
+        setAllEntries(ents); setLoading(false);
+      });
+  }, [activeDataKey]);
 
-  const accounts = useMemo(() => data.accounts.filter(a => a.userId === activeDataKey), [data.accounts, activeDataKey]);
-  const allEntries = useMemo(() => data.entries.filter(e => e.userId === activeDataKey), [data.entries, activeDataKey]);
-
-  const filteredAccs = useMemo(() => {
-    if (accFilter === 'all') return accounts;
-    return accounts.filter(a => a.id === accFilter);
-  }, [accounts, accFilter]);
-
+  const filteredAccs = useMemo(() => accFilter === 'all' ? accounts : accounts.filter(a => a.id === accFilter), [accounts, accFilter]);
   const toggleAcc = (id) => setOpenAccs(p => ({ ...p, [id]: !p[id] }));
 
   const getAccRows = (accId) => {
-    const all = allEntries.filter(e => e.accountId === accId).sort((a, b) => a.date.localeCompare(b.date) || (a.order || 0) - (b.order || 0));
+    const all = allEntries.filter(e => e.accountId === accId).sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.order || 0) - (b.order || 0));
     let balance = 0;
     all.forEach(e => { if (e.date < monthFilter + '-00') balance += Number(e.debit || 0) - Number(e.credit || 0); });
     const carryForward = balance;
@@ -49,38 +52,47 @@ export default function Ledger() {
 
   const grandTotals = useMemo(() => {
     let debit = 0, credit = 0;
-    filteredAccs.forEach(acc => {
-      const { rows } = getAccRows(acc.id);
-      rows.forEach(r => { debit += Number(r.debit || 0); credit += Number(r.credit || 0); });
-    });
+    filteredAccs.forEach(acc => { const { rows } = getAccRows(acc.id); rows.forEach(r => { debit += Number(r.debit || 0); credit += Number(r.credit || 0); }); });
     return { debit, credit };
   }, [filteredAccs, allEntries, monthFilter]);
 
-  const handleAddAcc = (name) => {
+  const handleAddAcc = async (name) => {
     if (accounts.some(a => a.name.toLowerCase() === name.toLowerCase())) { toast.error('Already exists'); return; }
-    save({ ...data, accounts: [...data.accounts, { id: generateId(), name: name.trim(), userId: activeDataKey }] });
-    toast.success(`"${name}" added`); setShowAccForm(false);
+    try {
+      const row = await db.insertLedgerAccount(activeDataKey, name.trim());
+      setAccounts(prev => [...prev, { id: row.id, name: row.name, userId: row.user_id }]);
+      toast.success(`"${name}" added`); setShowAccForm(false);
+    } catch { toast.error('Failed'); }
   };
 
-  const handleDeleteAcc = (id) => {
+  const handleDeleteAcc = async (id) => {
     if (allEntries.some(e => e.accountId === id) && !window.confirm('Has entries. Delete all?')) return;
-    save({ accounts: data.accounts.filter(a => a.id !== id), entries: data.entries.filter(e => e.accountId !== id) });
+    await db.removeLedgerAccount(id);
+    setAccounts(prev => prev.filter(a => a.id !== id));
+    setAllEntries(prev => prev.filter(e => e.accountId !== id));
     toast.success('Deleted');
   };
 
-  const handleAddEntry = (entry) => {
-    const maxOrder = allEntries.length > 0 ? Math.max(...allEntries.map(e => e.order || 0)) : 0;
-    save({ ...data, entries: [...data.entries, { ...entry, id: generateId(), userId: activeDataKey, order: maxOrder + 1 }] });
-    toast.success('Entry added');
+  const handleAddEntry = async (entry) => {
+    try {
+      const maxOrder = allEntries.length > 0 ? Math.max(...allEntries.map(e => e.order || 0)) : 0;
+      const row = await db.insertLedgerEntry(activeDataKey, { ...entry, order: maxOrder + 1 });
+      const mapped = { id: row.id, userId: row.user_id, accountId: row.account_id, date: row.date, description: row.description, debit: row.debit, credit: row.credit, order: row.sort_order };
+      setAllEntries(prev => [...prev, mapped].sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.order || 0) - (b.order || 0)));
+      toast.success('Entry added');
+    } catch { toast.error('Failed'); }
   };
 
-  const handleUpdateEntry = (entry) => {
-    save({ ...data, entries: data.entries.map(e => e.id === editingEntry.id ? { ...editingEntry, ...entry } : e) });
-    toast.success('Updated'); setEditingEntry(null); setShowEntryForm(false);
+  const handleUpdateEntry = async (entry) => {
+    try {
+      await db.updateLedgerEntry(editingEntry.id, entry);
+      setAllEntries(prev => prev.map(e => e.id === editingEntry.id ? { ...e, ...entry } : e));
+      toast.success('Updated'); setEditingEntry(null); setShowEntryForm(false);
+    } catch { toast.error('Failed'); }
   };
 
-  const handleDeleteEntry = (id) => {
-    if (window.confirm('Delete?')) { save({ ...data, entries: data.entries.filter(e => e.id !== id) }); toast.success('Deleted'); }
+  const handleDeleteEntry = async (id) => {
+    if (window.confirm('Delete?')) { await db.removeLedgerEntry(id); setAllEntries(prev => prev.filter(e => e.id !== id)); toast.success('Deleted'); }
   };
 
   const exportAcc = (acc) => {
@@ -114,6 +126,7 @@ export default function Ledger() {
   };
 
   if (!activeDataKey) return <div className="page-container"><div className="card"><div className="empty-state"><p>Select a user first.</p></div></div></div>;
+  if (loading) return <div className="page-container"><PageLoader text="Loading Ledger..." /></div>;
 
   return (
     <div className="page-container">
@@ -149,16 +162,13 @@ export default function Ledger() {
             const tD = rows.reduce((s, r) => s + Number(r.debit || 0), 0);
             const tC = rows.reduce((s, r) => s + Number(r.credit || 0), 0);
             const lastBal = rows.length > 0 ? rows[rows.length - 1].balance : carryForward;
-
             return (
               <div key={acc.id} className="ledger-sheet card">
                 <div className="ledger-sheet__header" onClick={() => toggleAcc(acc.id)}>
                   <div className="ledger-sheet__info">
                     <strong className="ledger-sheet__name">{acc.name}</strong>
                     <span className="badge badge--default">{rows.length} entries</span>
-                    <span className="ledger-sheet__summary">
-                      Dr: {fmtRS(tD)} | Cr: {fmtRS(tC)} | Bal: <span style={{ color: lastBal >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>{fmtRS(lastBal)}</span>
-                    </span>
+                    <span className="ledger-sheet__summary">Dr: {fmtRS(tD)} | Cr: {fmtRS(tC)} | Bal: <span style={{ color: lastBal >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>{fmtRS(lastBal)}</span></span>
                   </div>
                   <div className="ledger-sheet__actions">
                     <button className="action-btn" onClick={e => { e.stopPropagation(); exportAcc(acc); }} title="Export"><Download size={15} /></button>
@@ -167,16 +177,13 @@ export default function Ledger() {
                     {isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                   </div>
                 </div>
-
                 {isOpen && (
                   <div className="ledger-sheet__body">
                     <div className="table-wrapper">
                       <table className="data-table ledger-table">
                         <thead><tr><th>Date</th><th>Description</th><th>Debit</th><th>Credit</th><th>Balance</th><th></th></tr></thead>
                         <tbody>
-                          {carryForward !== 0 && (
-                            <tr className="ledger-carry"><td></td><td style={{ fontWeight: 600, fontStyle: 'italic' }}>Carry Forward</td><td></td><td></td><td style={{ fontWeight: 700 }}>{fmtRS(carryForward)}</td><td></td></tr>
-                          )}
+                          {carryForward !== 0 && (<tr className="ledger-carry"><td></td><td style={{ fontWeight: 600, fontStyle: 'italic' }}>Carry Forward</td><td></td><td></td><td style={{ fontWeight: 700 }}>{fmtRS(carryForward)}</td><td></td></tr>)}
                           {rows.length === 0 && carryForward === 0 ? (
                             <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 20 }}>No entries this month.</td></tr>
                           ) : rows.map(r => (
@@ -195,14 +202,7 @@ export default function Ledger() {
                             </tr>
                           ))}
                         </tbody>
-                        <tfoot>
-                          <tr><td style={{ fontWeight: 700, textAlign: 'right' }}>Total:</td><td></td>
-                            <td className="ledger-debit-cell" style={{ fontWeight: 700 }}>{fmtRS(tD)}</td>
-                            <td className="ledger-credit-cell" style={{ fontWeight: 700 }}>{fmtRS(tC)}</td>
-                            <td style={{ fontWeight: 800, color: lastBal >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>{fmtRS(lastBal)}</td>
-                            <td></td>
-                          </tr>
-                        </tfoot>
+                        <tfoot><tr><td style={{ fontWeight: 700, textAlign: 'right' }}>Total:</td><td></td><td className="ledger-debit-cell" style={{ fontWeight: 700 }}>{fmtRS(tD)}</td><td className="ledger-credit-cell" style={{ fontWeight: 700 }}>{fmtRS(tC)}</td><td style={{ fontWeight: 800, color: lastBal >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>{fmtRS(lastBal)}</td><td></td></tr></tfoot>
                       </table>
                     </div>
                   </div>
@@ -216,7 +216,6 @@ export default function Ledger() {
       <Modal isOpen={showAccForm} onClose={() => setShowAccForm(false)} title="Add Party Account" size="sm">
         <AccForm onSave={handleAddAcc} onCancel={() => setShowAccForm(false)} />
       </Modal>
-
       <Modal isOpen={showEntryForm} onClose={() => { setShowEntryForm(false); setEditingEntry(null); }} title={editingEntry ? 'Edit Entry' : 'Add Ledger Entry'}>
         <EntryForm accounts={accounts} initial={editingEntry} onSave={editingEntry ? handleUpdateEntry : handleAddEntry} onCancel={() => { setShowEntryForm(false); setEditingEntry(null); }} />
       </Modal>

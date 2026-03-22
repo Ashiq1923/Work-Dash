@@ -1,11 +1,9 @@
-import { createContext, useContext, useReducer, useEffect, useState } from 'react';
-import { STORAGE_KEYS, generateId } from '../utils/constants';
-import { loadFromStorage, saveToStorage } from '../utils/storageUtils';
+import { createContext, useContext, useReducer, useEffect, useState, useCallback } from 'react';
 import { useAuth } from './AuthContext';
+import * as db from '../lib/db';
 
 const IncomeContext = createContext();
 
-// Calculate effective heads based on type
 function getEffectiveHeads(machineHead, type) {
   const mh = Number(machineHead);
   if (type === 'all_head') return mh;
@@ -14,7 +12,6 @@ function getEffectiveHeads(machineHead, type) {
   return mh;
 }
 
-// Calculate rounds
 function calcRounds(machineHead, component) {
   const mh = Number(machineHead);
   const val = Number(component.value) || 0;
@@ -26,7 +23,6 @@ function calcRounds(machineHead, component) {
   return effectiveHeads > 0 ? val / effectiveHeads : 0;
 }
 
-// Enrich components with calculated fields
 function enrichComponents(machineHead, components) {
   return components.map(comp => {
     const effectiveHeads = getEffectiveHeads(machineHead, comp.type);
@@ -36,11 +32,9 @@ function enrichComponents(machineHead, components) {
   });
 }
 
-const DEFAULT_PARTIES = [];
-
 function reducer(state, action) {
   switch (action.type) {
-    case 'LOAD': return { ...state, entries: action.payload };
+    case 'SET': return { ...state, entries: action.payload };
     case 'ADD': return { ...state, entries: [action.payload, ...state.entries] };
     case 'UPDATE': return { ...state, entries: state.entries.map(e => e.id === action.payload.id ? action.payload : e) };
     case 'DELETE': return { ...state, entries: state.entries.filter(e => e.id !== action.payload) };
@@ -49,77 +43,69 @@ function reducer(state, action) {
 }
 
 export function IncomeProvider({ children }) {
-  const { currentUser, isAdmin, activeUserId, activeDataKey } = useAuth();
+  const { currentUser, isAdmin, activeDataKey } = useAuth();
   const [state, dispatch] = useReducer(reducer, { entries: [] });
   const [parties, setParties] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const savedParties = loadFromStorage(STORAGE_KEYS.PARTIES, DEFAULT_PARTIES);
-    setParties(savedParties);
-    const saved = loadFromStorage(STORAGE_KEYS.INCOME, []);
-    dispatch({ type: 'LOAD', payload: saved });
-  }, []);
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    const p = await db.fetchParties();
+    setParties(p.map(x => ({ id: x.id, name: x.name })));
+    if (!activeDataKey) { dispatch({ type: 'SET', payload: [] }); setLoading(false); return; }
+    const articles = await db.fetchArticles(activeDataKey);
+    // Enrich components
+    const enriched = articles.map(a => ({
+      ...a,
+      components: enrichComponents(a.machineHead, a.components),
+    }));
+    dispatch({ type: 'SET', payload: enriched });
+    setLoading(false);
+  }, [activeDataKey]);
 
-  useEffect(() => {
-    saveToStorage(STORAGE_KEYS.PARTIES, parties);
-  }, [parties]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  useEffect(() => {
-    saveToStorage(STORAGE_KEYS.INCOME, state.entries);
-  }, [state.entries]);
+  const entries = state.entries;
 
-  // Filtered entries: based on activeDataKey (user name) for data ops
-  const entries = activeDataKey
-    ? state.entries.filter(e => e.userId === activeDataKey)
-    : [];
-
-  // All entries (for admin to check party usage etc)
-  const allEntries = state.entries;
-
-  // Party CRUD
-  const addParty = (name) => {
-    const p = { id: generateId(), name: name.trim() };
-    setParties(prev => [...prev, p]);
-    return p;
+  const addParty = async (name) => {
+    const p = await db.insertParty(name.trim());
+    const mapped = { id: p.id, name: p.name };
+    setParties(prev => [...prev, mapped]);
+    return mapped;
   };
-  const deleteParty = (id) => setParties(prev => prev.filter(p => p.id !== id));
+  const deleteParty = async (id) => { await db.removeParty(id); setParties(prev => prev.filter(p => p.id !== id)); };
   const getPartyName = (id) => parties.find(p => p.id === id)?.name || 'Unknown';
 
-  // Article CRUD - tag with userId
-  const addEntry = (entry) => {
-    const enriched = {
-      ...entry,
-      id: generateId(),
-      userId: activeDataKey || currentUser?.name,
-      status: 'pending',
-      components: enrichComponents(entry.machineHead, entry.components),
-    };
-    dispatch({ type: 'ADD', payload: enriched });
+  const addEntry = async (entry) => {
+    const a = await db.insertArticle(activeDataKey, entry);
+    // Re-fetch to get components with IDs
+    await loadData();
   };
-  const updateEntry = (entry) => {
-    const enriched = {
-      ...entry,
-      components: enrichComponents(entry.machineHead, entry.components),
-    };
-    dispatch({ type: 'UPDATE', payload: enriched });
+
+  const updateEntry = async (entry) => {
+    await db.updateArticle(entry);
+    await loadData();
   };
-  const deleteEntry = (id) => dispatch({ type: 'DELETE', payload: id });
-  const toggleStatus = (id) => {
+
+  const deleteEntry = async (id) => {
+    await db.removeArticle(id);
+    dispatch({ type: 'DELETE', payload: id });
+  };
+
+  const toggleStatus = async (id) => {
     const entry = state.entries.find(e => e.id === id);
     if (entry) {
-      dispatch({ type: 'UPDATE', payload: { ...entry, status: entry.status === 'done' ? 'pending' : 'done' } });
+      const newStatus = entry.status === 'done' ? 'pending' : 'done';
+      await db.updateArticle({ ...entry, status: newStatus });
+      dispatch({ type: 'UPDATE', payload: { ...entry, status: newStatus } });
     }
   };
 
-  // Can user edit this entry? Admin can edit all, user can edit only own
-  const canEditEntry = (entry) => {
-    if (isAdmin) return true;
-    return entry.userId === currentUser?.id;
-  };
+  const canEditEntry = () => true; // RLS handles permissions
 
   return (
     <IncomeContext.Provider value={{
-      entries, allEntries, addEntry, updateEntry, deleteEntry, toggleStatus, canEditEntry,
+      entries, loading, addEntry, updateEntry, deleteEntry, toggleStatus, canEditEntry,
       parties, addParty, deleteParty, getPartyName,
       getEffectiveHeads, calcRounds, enrichComponents,
     }}>

@@ -5,7 +5,7 @@ import './Header.css';
 
 export function Header({ onMenuClick }) {
   const { theme, toggleTheme } = useTheme();
-  const { currentUser, users, logout, isAdmin, viewingUserId, setViewingUserId } = useAuth();
+  const { profile, users, logout, isAdmin, viewingUserId, setViewingUserId } = useAuth();
 
   // Non-admin users (for admin dropdown)
   const selectableUsers = users.filter(u => u.type !== 'admin');
@@ -37,9 +37,9 @@ export function Header({ onMenuClick }) {
         <button className="header__icon-btn" onClick={toggleTheme} title="Toggle theme">
           {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
         </button>
-        <span className="header__user-name">{currentUser?.name}</span>
-        <span className={`badge ${currentUser?.type === 'admin' ? 'badge--accent' : 'badge--default'}`} style={{ fontSize: '0.65rem' }}>
-          {currentUser?.type}
+        <span className="header__user-name">{profile?.name}</span>
+        <span className={`badge ${profile?.type === 'admin' ? 'badge--accent' : 'badge--default'}`} style={{ fontSize: '0.65rem' }}>
+          {profile?.type}
         </span>
         <button className="header__icon-btn header__icon-btn--logout" onClick={logout} title="Logout">
           <LogOut size={18} />

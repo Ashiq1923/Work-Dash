@@ -1,13 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Plus, Trash2, Download, Pencil, ChevronDown, ChevronUp, Printer } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { Input, Select } from '../components/ui/FormField';
 import { currentMonthKey, getLastNMonths } from '../utils/dateUtils';
-import { STORAGE_KEYS, generateId } from '../utils/constants';
-import { loadFromStorage, saveToStorage } from '../utils/storageUtils';
+import * as db from '../lib/db';
 import { exportToExcel } from '../utils/excelUtils';
+import { PageLoader } from '../components/ui/Spinner';
 import toast from 'react-hot-toast';
 import './Thread.css';
 
@@ -15,7 +15,9 @@ const fmtRS = (v) => `Rs ${Number(v).toLocaleString('en-IN', { minimumFractionDi
 
 export default function Thread() {
   const { activeDataKey } = useAuth();
-  const [data, setData] = useState(() => loadFromStorage(STORAGE_KEYS.THREAD, { accounts: [], entries: [] }));
+  const [accounts, setAccounts] = useState([]);
+  const [allEntries, setAllEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showAccForm, setShowAccForm] = useState(false);
   const [showEntryForm, setShowEntryForm] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
@@ -24,10 +26,15 @@ export default function Thread() {
   const [monthFilter, setMonthFilter] = useState(currentMonthKey());
   const months = useMemo(() => getLastNMonths(12), []);
 
-  const save = (d) => { saveToStorage(STORAGE_KEYS.THREAD, d); setData(d); };
-
-  const accounts = useMemo(() => data.accounts.filter(a => a.userId === activeDataKey), [data.accounts, activeDataKey]);
-  const allEntries = useMemo(() => data.entries.filter(e => e.userId === activeDataKey), [data.entries, activeDataKey]);
+  useEffect(() => {
+    if (!activeDataKey) { setAccounts([]); setAllEntries([]); setLoading(false); return; }
+    setLoading(true);
+    Promise.all([db.fetchThreadAccounts(activeDataKey), db.fetchThreadEntries(activeDataKey)])
+      .then(([accs, ents]) => {
+        setAccounts(accs.map(a => ({ id: a.id, name: a.name, userId: a.user_id })));
+        setAllEntries(ents); setLoading(false);
+      });
+  }, [activeDataKey]);
 
   const getAccName = (id) => accounts.find(a => a.id === id)?.name || '?';
   const toggleAcc = (id) => setOpenAccs(p => ({ ...p, [id]: !p[id] }));
@@ -37,76 +44,66 @@ export default function Thread() {
     return accounts.filter(a => a.id === accFilter);
   }, [accounts, accFilter]);
 
-  // Get entries for an account, sorted by date+order
-  const getAccEntries = (accId) => {
-    return allEntries.filter(e => e.accountId === accId).sort((a, b) => a.date.localeCompare(b.date) || (a.order || 0) - (b.order || 0));
-  };
+  const getAccEntries = (accId) =>
+    allEntries.filter(e => e.accountId === accId).sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.order || 0) - (b.order || 0));
 
-  // Get entries for account filtered by month, with running balance
   const getAccRows = (accId) => {
     const all = getAccEntries(accId);
     let balance = 0;
-    // Carry forward from before this month
-    all.forEach(e => {
-      if (e.date < monthFilter + '-00') {
-        balance += Number(e.amount || 0) - Number(e.pay || 0);
-      }
-    });
+    all.forEach(e => { if (e.date < monthFilter + '-00') balance += Number(e.amount || 0) - Number(e.pay || 0); });
     const carryForward = balance;
     const monthEntries = all.filter(e => e.date?.startsWith(monthFilter));
     const rows = [];
-    monthEntries.forEach(e => {
-      balance += Number(e.amount || 0) - Number(e.pay || 0);
-      rows.push({ ...e, balance });
-    });
+    monthEntries.forEach(e => { balance += Number(e.amount || 0) - Number(e.pay || 0); rows.push({ ...e, balance }); });
     return { carryForward, rows };
   };
 
-  // Totals
   const grandTotals = useMemo(() => {
     let totalAmt = 0, totalPay = 0;
-    filteredAccs.forEach(acc => {
-      const { rows } = getAccRows(acc.id);
-      rows.forEach(r => { totalAmt += Number(r.amount || 0); totalPay += Number(r.pay || 0); });
-    });
+    filteredAccs.forEach(acc => { const { rows } = getAccRows(acc.id); rows.forEach(r => { totalAmt += Number(r.amount || 0); totalPay += Number(r.pay || 0); }); });
     return { totalAmt, totalPay };
   }, [filteredAccs, allEntries, monthFilter]);
 
-  // Add account
-  const handleAddAcc = (name) => {
+  const handleAddAcc = async (name) => {
     if (accounts.some(a => a.name.toLowerCase() === name.toLowerCase())) { toast.error('Account already exists'); return; }
-    const acc = { id: generateId(), name: name.trim(), userId: activeDataKey };
-    save({ ...data, accounts: [...data.accounts, acc] });
-    toast.success(`Account "${name}" added`);
-    setShowAccForm(false);
+    try {
+      const row = await db.insertThreadAccount(activeDataKey, name.trim());
+      setAccounts(prev => [...prev, { id: row.id, name: row.name, userId: row.user_id }]);
+      toast.success(`Account "${name}" added`); setShowAccForm(false);
+    } catch { toast.error('Failed'); }
   };
 
-  const handleDeleteAcc = (id) => {
+  const handleDeleteAcc = async (id) => {
     const hasEntries = allEntries.some(e => e.accountId === id);
     if (hasEntries && !window.confirm('Account has entries. Delete all?')) return;
-    save({ accounts: data.accounts.filter(a => a.id !== id), entries: data.entries.filter(e => e.accountId !== id) });
+    await db.removeThreadAccount(id);
+    setAccounts(prev => prev.filter(a => a.id !== id));
+    setAllEntries(prev => prev.filter(e => e.accountId !== id));
     toast.success('Account deleted');
   };
 
-  // Add entry
-  const handleAddEntry = (entry) => {
-    const maxOrder = allEntries.length > 0 ? Math.max(...allEntries.map(e => e.order || 0)) : 0;
-    const newEntry = { ...entry, id: generateId(), userId: activeDataKey, order: maxOrder + 1 };
-    save({ ...data, entries: [...data.entries, newEntry] });
-    toast.success('Entry added');
+  const handleAddEntry = async (entry) => {
+    try {
+      const maxOrder = allEntries.length > 0 ? Math.max(...allEntries.map(e => e.order || 0)) : 0;
+      const row = await db.insertThreadEntry(activeDataKey, { ...entry, order: maxOrder + 1 });
+      const mapped = { id: row.id, userId: row.user_id, accountId: row.account_id, date: row.date, description: row.description, amount: row.amount, pay: row.pay, order: row.sort_order };
+      setAllEntries(prev => [...prev, mapped].sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.order || 0) - (b.order || 0)));
+      toast.success('Entry added');
+    } catch { toast.error('Failed'); }
   };
 
-  const handleUpdateEntry = (entry) => {
-    save({ ...data, entries: data.entries.map(e => e.id === editingEntry.id ? { ...editingEntry, ...entry } : e) });
-    toast.success('Updated');
-    setEditingEntry(null); setShowEntryForm(false);
+  const handleUpdateEntry = async (entry) => {
+    try {
+      await db.updateThreadEntry(editingEntry.id, entry);
+      setAllEntries(prev => prev.map(e => e.id === editingEntry.id ? { ...e, ...entry } : e));
+      toast.success('Updated'); setEditingEntry(null); setShowEntryForm(false);
+    } catch { toast.error('Failed'); }
   };
 
-  const handleDeleteEntry = (id) => {
-    if (window.confirm('Delete?')) { save({ ...data, entries: data.entries.filter(e => e.id !== id) }); toast.success('Deleted'); }
+  const handleDeleteEntry = async (id) => {
+    if (window.confirm('Delete?')) { await db.removeThreadEntry(id); setAllEntries(prev => prev.filter(e => e.id !== id)); toast.success('Deleted'); }
   };
 
-  // Export single account
   const exportAcc = (acc) => {
     const { carryForward, rows } = getAccRows(acc.id);
     const exRows = [];
@@ -120,7 +117,6 @@ export default function Thread() {
     toast.success('Exported!');
   };
 
-  // Print single account
   const printAcc = (acc) => {
     const { carryForward, rows } = getAccRows(acc.id);
     let tAmt = 0, tPay = 0;
@@ -139,6 +135,7 @@ export default function Thread() {
   };
 
   if (!activeDataKey) return <div className="page-container"><div className="card"><div className="empty-state"><p>Select a user first.</p></div></div></div>;
+  if (loading) return <div className="page-container"><PageLoader text="Loading Thread..." /></div>;
 
   return (
     <div className="page-container">
@@ -153,10 +150,7 @@ export default function Thread() {
             {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
           <Button variant="secondary" onClick={() => setShowAccForm(true)}><Plus size={16} /> Add Account</Button>
-          <Button onClick={() => {
-            if (accounts.length === 0) { toast.error('Add account first'); return; }
-            setEditingEntry(null); setShowEntryForm(true);
-          }}><Plus size={16} /> Add Entry</Button>
+          <Button onClick={() => { if (accounts.length === 0) { toast.error('Add account first'); return; } setEditingEntry(null); setShowEntryForm(true); }}><Plus size={16} /> Add Entry</Button>
         </div>
       </div>
 
@@ -167,7 +161,6 @@ export default function Thread() {
         <div className="stats-card"><div className="stats-card__content"><p className="stats-card__title">Net Balance</p><p className="stats-card__value" style={{ color: (grandTotals.totalAmt - grandTotals.totalPay) >= 0 ? 'var(--color-danger)' : 'var(--color-success)' }}>{fmtRS(grandTotals.totalAmt - grandTotals.totalPay)}</p><p className="stats-card__subtitle">Remaining</p></div></div>
       </div>
 
-      {/* Account Sheets */}
       {filteredAccs.length === 0 ? (
         <div className="card"><div className="empty-state"><p>No accounts. Add an account to start tracking.</p></div></div>
       ) : (
@@ -178,16 +171,13 @@ export default function Thread() {
             const tAmt = rows.reduce((s, r) => s + Number(r.amount || 0), 0);
             const tPay = rows.reduce((s, r) => s + Number(r.pay || 0), 0);
             const lastBal = rows.length > 0 ? rows[rows.length - 1].balance : carryForward;
-
             return (
               <div key={acc.id} className="thread-sheet card">
                 <div className="thread-sheet__header" onClick={() => toggleAcc(acc.id)}>
                   <div className="thread-sheet__info">
                     <strong className="thread-sheet__name">{acc.name}</strong>
                     <span className="badge badge--default">{rows.length} entries</span>
-                    <span className="thread-sheet__summary">
-                      Amt: {fmtRS(tAmt)} | Pay: {fmtRS(tPay)} | Bal: <span style={{ color: lastBal > 0 ? 'var(--color-danger)' : 'var(--color-success)' }}>{fmtRS(lastBal)}</span>
-                    </span>
+                    <span className="thread-sheet__summary">Amt: {fmtRS(tAmt)} | Pay: {fmtRS(tPay)} | Bal: <span style={{ color: lastBal > 0 ? 'var(--color-danger)' : 'var(--color-success)' }}>{fmtRS(lastBal)}</span></span>
                   </div>
                   <div className="thread-sheet__actions">
                     <button className="action-btn" onClick={e => { e.stopPropagation(); exportAcc(acc); }} title="Export"><Download size={15} /></button>
@@ -196,16 +186,13 @@ export default function Thread() {
                     {isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                   </div>
                 </div>
-
                 {isOpen && (
                   <div className="thread-sheet__body">
                     <div className="table-wrapper">
                       <table className="data-table thread-table">
                         <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Pay</th><th>Balance</th><th></th></tr></thead>
                         <tbody>
-                          {carryForward !== 0 && (
-                            <tr className="thread-carry"><td></td><td style={{ fontWeight: 600, fontStyle: 'italic' }}>Carry Forward</td><td></td><td></td><td style={{ fontWeight: 700 }}>{fmtRS(carryForward)}</td><td></td></tr>
-                          )}
+                          {carryForward !== 0 && (<tr className="thread-carry"><td></td><td style={{ fontWeight: 600, fontStyle: 'italic' }}>Carry Forward</td><td></td><td></td><td style={{ fontWeight: 700 }}>{fmtRS(carryForward)}</td><td></td></tr>)}
                           {rows.length === 0 && carryForward === 0 ? (
                             <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: 20 }}>No entries this month.</td></tr>
                           ) : rows.map(r => (
@@ -224,15 +211,7 @@ export default function Thread() {
                             </tr>
                           ))}
                         </tbody>
-                        <tfoot>
-                          <tr>
-                            <td style={{ fontWeight: 700, textAlign: 'right' }}>Total:</td><td></td>
-                            <td className="thread-amt-cell" style={{ fontWeight: 700 }}>{fmtRS(tAmt)}</td>
-                            <td className="thread-pay-cell" style={{ fontWeight: 700 }}>{fmtRS(tPay)}</td>
-                            <td style={{ fontWeight: 800, color: lastBal > 0 ? 'var(--color-danger)' : 'var(--color-success)' }}>{fmtRS(lastBal)}</td>
-                            <td></td>
-                          </tr>
-                        </tfoot>
+                        <tfoot><tr><td style={{ fontWeight: 700, textAlign: 'right' }}>Total:</td><td></td><td className="thread-amt-cell" style={{ fontWeight: 700 }}>{fmtRS(tAmt)}</td><td className="thread-pay-cell" style={{ fontWeight: 700 }}>{fmtRS(tPay)}</td><td style={{ fontWeight: 800, color: lastBal > 0 ? 'var(--color-danger)' : 'var(--color-success)' }}>{fmtRS(lastBal)}</td><td></td></tr></tfoot>
                       </table>
                     </div>
                   </div>
@@ -243,12 +222,9 @@ export default function Thread() {
         </div>
       )}
 
-      {/* Add Account Modal */}
       <Modal isOpen={showAccForm} onClose={() => setShowAccForm(false)} title="Add Thread Account" size="sm">
         <AccForm onSave={handleAddAcc} onCancel={() => setShowAccForm(false)} />
       </Modal>
-
-      {/* Add/Edit Entry Modal */}
       <Modal isOpen={showEntryForm} onClose={() => { setShowEntryForm(false); setEditingEntry(null); }} title={editingEntry ? 'Edit Entry' : 'Add Entry'}>
         <EntryForm accounts={accounts} initial={editingEntry} onSave={editingEntry ? handleUpdateEntry : handleAddEntry} onCancel={() => { setShowEntryForm(false); setEditingEntry(null); }} />
       </Modal>
@@ -275,7 +251,6 @@ function EntryForm({ accounts, initial, onSave, onCancel }) {
       if (!form.accountId) { toast.error('Select account'); return; }
       if (!form.amount && !form.pay) { toast.error('Enter amount or pay'); return; }
       onSave({ accountId: form.accountId, description: form.description, amount: Number(form.amount) || 0, pay: Number(form.pay) || 0, date: form.date });
-      // Reset for quick multi-entry
       set('description', ''); set('amount', ''); set('pay', '');
     }} className="form-grid">
       <Select label="Account *" value={form.accountId} onChange={e => set('accountId', e.target.value)}>

@@ -10,13 +10,17 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleSubmit = (e) => {
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
       toast.error('Email and password are required');
       return;
     }
-    const result = login(email.trim(), password);
+    setLoading(true);
+    const result = await login(email.trim(), password);
+    setLoading(false);
     if (!result.success) {
       toast.error(result.message);
     } else {

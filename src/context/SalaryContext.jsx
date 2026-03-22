@@ -1,60 +1,36 @@
-import { createContext, useContext, useReducer, useEffect } from 'react';
-import { STORAGE_KEYS } from '../utils/constants';
-import { loadFromStorage, saveToStorage } from '../utils/storageUtils';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
-
-/*
-  Salary overrides — when production is edited in Salary section,
-  the override is stored here (doesn't affect Production section).
-  Shape: { "userId_operatorId_month_day": { production, description } }
-*/
+import * as db from '../lib/db';
 
 const SalaryContext = createContext();
 
-function reducer(state, action) {
-  switch (action.type) {
-    case 'LOAD': return action.payload;
-    case 'SET_OVERRIDE': {
-      const { key, data } = action.payload;
-      return { ...state, [key]: data };
-    }
-    case 'DELETE_OVERRIDE': {
-      const s = { ...state };
-      delete s[action.payload];
-      return s;
-    }
-    default: return state;
-  }
-}
-
 export function SalaryProvider({ children }) {
   const { activeDataKey } = useAuth();
-  const [state, dispatch] = useReducer(reducer, {});
+  const [overrides, setOverrides] = useState({});
 
-  useEffect(() => {
-    const saved = loadFromStorage(STORAGE_KEYS.SALARY, {});
-    dispatch({ type: 'LOAD', payload: saved });
-  }, []);
+  const loadData = useCallback(async () => {
+    if (!activeDataKey) { setOverrides({}); return; }
+    const data = await db.fetchSalaryOverrides(activeDataKey);
+    setOverrides(data);
+  }, [activeDataKey]);
 
-  useEffect(() => {
-    saveToStorage(STORAGE_KEYS.SALARY, state);
-  }, [state]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  const makeKey = (operatorId, month, day) => `${activeDataKey}_${operatorId}_${month}_${day}`;
-
-  const setOverride = (operatorId, month, day, data) => {
-    const key = makeKey(operatorId, month, day);
-    dispatch({ type: 'SET_OVERRIDE', payload: { key, data } });
+  const setOverride = async (operatorId, month, day, data) => {
+    const key = `${activeDataKey}_${operatorId}_${month}_${day}`;
+    setOverrides(prev => ({ ...prev, [key]: data }));
+    await db.upsertSalaryOverride(activeDataKey, operatorId, month, day, data);
   };
 
-  const deleteOverride = (operatorId, month, day) => {
-    const key = makeKey(operatorId, month, day);
-    dispatch({ type: 'DELETE_OVERRIDE', payload: key });
+  const deleteOverride = async (operatorId, month, day) => {
+    const key = `${activeDataKey}_${operatorId}_${month}_${day}`;
+    setOverrides(prev => { const n = { ...prev }; delete n[key]; return n; });
+    await db.removeSalaryOverride(activeDataKey, operatorId, month, day);
   };
 
   const getOverride = (operatorId, month, day) => {
-    const key = makeKey(operatorId, month, day);
-    return state[key] || null;
+    const key = `${activeDataKey}_${operatorId}_${month}_${day}`;
+    return overrides[key] || null;
   };
 
   return (

@@ -1,13 +1,13 @@
-import { useState, useMemo } from 'react';
-import { Plus, Trash2, Download, Pencil, Check, X } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Plus, Trash2, Download, Pencil } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { Input } from '../components/ui/FormField';
 import { currentMonthKey, getLastNMonths } from '../utils/dateUtils';
-import { STORAGE_KEYS, generateId } from '../utils/constants';
-import { loadFromStorage, saveToStorage } from '../utils/storageUtils';
+import * as db from '../lib/db';
 import { exportToExcel } from '../utils/excelUtils';
+import { PageLoader } from '../components/ui/Spinner';
 import toast from 'react-hot-toast';
 import './GExp.css';
 
@@ -15,30 +15,26 @@ const fmtRS = (v) => `Rs ${Number(v).toLocaleString('en-IN', { minimumFractionDi
 
 export default function GExp() {
   const { activeDataKey } = useAuth();
-  const [allEntries, setAllEntries] = useState(() => loadFromStorage(STORAGE_KEYS.GEXP, []));
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [editIdx, setEditIdx] = useState(null);
   const [monthFilter, setMonthFilter] = useState(currentMonthKey());
   const months = useMemo(() => getLastNMonths(12), []);
 
-  const save = (data) => { saveToStorage(STORAGE_KEYS.GEXP, data); setAllEntries(data); };
+  useEffect(() => {
+    if (!activeDataKey) { setEntries([]); setLoading(false); return; }
+    setLoading(true);
+    db.fetchGexpEntries(activeDataKey).then(d => { setEntries(d); setLoading(false); });
+  }, [activeDataKey]);
 
-  // All entries for this user, sorted by date then by order added
-  const userEntries = useMemo(() =>
-    allEntries.filter(e => e.userId === activeDataKey).sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order),
-  [allEntries, activeDataKey]);
-
-  // Filtered by month
   const filtered = useMemo(() =>
-    userEntries.filter(e => e.date?.startsWith(monthFilter)),
-  [userEntries, monthFilter]);
+    entries.filter(e => e.date?.startsWith(monthFilter)),
+  [entries, monthFilter]);
 
-  // Calculate running balance
   const rowsWithBalance = useMemo(() => {
     let balance = 0;
-    // Get carry-forward: all entries BEFORE this month
-    userEntries.forEach(e => {
+    entries.forEach(e => {
       if (e.date < monthFilter + '-00') {
         balance += Number(e.debit || 0) - Number(e.credit || 0);
       }
@@ -50,28 +46,38 @@ export default function GExp() {
       rows.push({ ...e, balance });
     });
     return { carryForward, rows };
-  }, [filtered, userEntries, monthFilter]);
+  }, [filtered, entries, monthFilter]);
 
   const totalDebit = filtered.reduce((s, e) => s + Number(e.debit || 0), 0);
   const totalCredit = filtered.reduce((s, e) => s + Number(e.credit || 0), 0);
   const finalBalance = rowsWithBalance.rows.length > 0 ? rowsWithBalance.rows[rowsWithBalance.rows.length - 1].balance : rowsWithBalance.carryForward;
 
-  const handleAdd = (data) => {
-    const maxOrder = userEntries.length > 0 ? Math.max(...userEntries.map(e => e.order || 0)) : 0;
-    const entry = { ...data, id: generateId(), userId: activeDataKey, order: maxOrder + 1 };
-    save([...allEntries, entry]);
-    toast.success('Entry added');
-    setShowForm(false);
+  const handleAdd = async (data) => {
+    try {
+      const maxOrder = entries.length > 0 ? Math.max(...entries.map(e => e.order || 0)) : 0;
+      const row = await db.insertGexpEntry(activeDataKey, { ...data, order: maxOrder + 1 });
+      const mapped = { id: row.id, userId: row.user_id, date: row.date, component: row.component, debit: row.debit, credit: row.credit, order: row.sort_order };
+      setEntries(prev => [...prev, mapped].sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.order || 0) - (b.order || 0)));
+      toast.success('Entry added');
+      setShowForm(false);
+    } catch (err) { toast.error('Failed to add'); }
   };
 
-  const handleUpdate = (data) => {
-    save(allEntries.map(e => e.id === editing.id ? { ...editing, ...data } : e));
-    toast.success('Updated');
-    setEditing(null); setShowForm(false);
+  const handleUpdate = async (data) => {
+    try {
+      await db.updateGexpEntry(editing.id, data);
+      setEntries(prev => prev.map(e => e.id === editing.id ? { ...e, ...data } : e));
+      toast.success('Updated');
+      setEditing(null); setShowForm(false);
+    } catch (err) { toast.error('Failed to update'); }
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm('Delete?')) { save(allEntries.filter(e => e.id !== id)); toast.success('Deleted'); }
+  const handleDelete = async (id) => {
+    if (window.confirm('Delete?')) {
+      await db.removeGexpEntry(id);
+      setEntries(prev => prev.filter(e => e.id !== id));
+      toast.success('Deleted');
+    }
   };
 
   const handleExport = () => {
@@ -87,6 +93,7 @@ export default function GExp() {
   };
 
   if (!activeDataKey) return <div className="page-container"><div className="card"><div className="empty-state"><p>Select a user first.</p></div></div></div>;
+  if (loading) return <div className="page-container"><PageLoader text="Loading G-Exp..." /></div>;
 
   return (
     <div className="page-container">
@@ -165,13 +172,7 @@ function GExpForm({ initial, onSave, onCancel }) {
       if (!form.component) { toast.error('Component required'); return; }
       const amt = Number(form.debit || form.credit || 0);
       if (amt <= 0) { toast.error('Enter amount'); return; }
-      const entry = {
-        component: form.component,
-        debit: type === 'debit' ? amt : 0,
-        credit: type === 'credit' ? amt : 0,
-        date: form.date,
-      };
-      onSave(entry);
+      onSave({ component: form.component, debit: type === 'debit' ? amt : 0, credit: type === 'credit' ? amt : 0, date: form.date });
     }} className="form-grid">
       <Input label="Date" type="date" value={form.date} onChange={e => set('date', e.target.value)} />
       <Input label="Component / Description *" value={form.component} onChange={e => set('component', e.target.value)} placeholder="e.g. Received funds / 1 Bobin" required />

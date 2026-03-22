@@ -56,7 +56,12 @@
   background: var(--color-bg-primary); color: var(--color-text-primary);
   font-size: 0.825rem; outline: none;
 }
-.salary-edit-input--wide { width: 100%; min-width: 180px; }
+.salary-edit-input--wide { width: 100%; min-width: 140px; }
+.salary-edit-select {
+  padding: 4px 6px; border: 1px solid var(--color-accent); border-radius: var(--radius-sm);
+  background: var(--color-bg-primary); color: var(--color-text-primary);
+  font-size: 0.8rem; outline: none;
+}
 .salary-edit-actions { display: flex; gap: 4px; }
 
 @media (max-width: 640px) {
