@@ -5,32 +5,13 @@ import './Header.css';
 
 export function Header({ onMenuClick }) {
   const { theme, toggleTheme } = useTheme();
-  const { profile, users, logout, isAdmin, viewingUserId, setViewingUserId } = useAuth();
-
-  // Non-admin users (for admin dropdown)
-  const selectableUsers = users.filter(u => u.type !== 'admin');
+  const { profile, logout } = useAuth();
 
   return (
     <header className="header">
       <button className="header__icon-btn" onClick={onMenuClick} title="Toggle sidebar">
         <Menu size={20} />
       </button>
-
-      {/* Admin user selector */}
-      {isAdmin && selectableUsers.length > 0 && (
-        <div className="header__user-select">
-          <select
-            className="header__user-dropdown"
-            value={viewingUserId || ''}
-            onChange={e => setViewingUserId(e.target.value || null)}
-          >
-            <option value="">-- Select User --</option>
-            {selectableUsers.map(u => (
-              <option key={u.id} value={u.id}>{u.name}</option>
-            ))}
-          </select>
-        </div>
-      )}
 
       <div className="header__spacer" />
       <div className="header__actions">
