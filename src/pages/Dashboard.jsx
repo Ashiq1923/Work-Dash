@@ -61,7 +61,7 @@ export default function Dashboard() {
         const dd = sheet?.days[String(dayNum)];
         if (!dd) return;
         const prod = Number(dd.production) || 0;
-        const gi = calcGenIncome(prod, op.head, dd.type, dd.rate, dd.genHead);
+        const gi = calcGenIncome(prod, op.head, dd.type, dd.rate);
         const subOp = dd.substituteOperatorId ? prodOperators.find(o => o.id === dd.substituteOperatorId) : null;
         totalProd += prod;
         totalGI += gi;

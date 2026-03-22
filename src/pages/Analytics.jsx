@@ -113,7 +113,7 @@ export default function Analytics() {
       const sheet = sheets.find(s => s.operatorId === op.id && s.month === monthFilter);
       if (!sheet) return;
       Object.values(sheet.days || {}).forEach(dd => {
-        total += calcGenIncome(Number(dd.production) || 0, op.head, dd.type, dd.rate, dd.genHead);
+        total += calcGenIncome(Number(dd.production) || 0, op.head, dd.type, dd.rate);
       });
     });
     return total;

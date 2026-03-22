@@ -27,23 +27,6 @@ export function ProductionProvider({ children }) {
   const { currentUser, activeDataKey } = useAuth();
   const [state, dispatch] = useReducer(reducer, INITIAL);
   const [loading, setLoading] = useState(true);
-  const [genIncomeMode, setGenIncomeModeState] = useState('half_remaining');
-
-  // Load gen income mode per user from Supabase settings
-  useEffect(() => {
-    if (!activeDataKey) return;
-    db.fetchSettings(activeDataKey).then(s => {
-      setGenIncomeModeState(s?.settings?.genIncomeMode || 'half_remaining');
-    });
-  }, [activeDataKey]);
-
-  const setGenIncomeMode = async (mode) => {
-    setGenIncomeModeState(mode);
-    if (activeDataKey) {
-      const existing = await db.fetchSettings(activeDataKey);
-      await db.upsertSettings(activeDataKey, { settings: { ...(existing?.settings || {}), genIncomeMode: mode } });
-    }
-  };
 
   const loadData = useCallback(async () => {
     if (!activeDataKey) { dispatch({ type: 'SET_HELPERS', payload: [] }); dispatch({ type: 'SET_OPERATORS', payload: [] }); dispatch({ type: 'SET_SHEETS', payload: [] }); setLoading(false); return; }
@@ -107,11 +90,8 @@ export function ProductionProvider({ children }) {
       sheet = { id: s.id, userId: s.user_id, month: s.month, operatorId: s.operator_id, machine: s.machine, days: {} };
       dispatch({ type: 'ADD_SHEET', payload: sheet });
     }
-    // Compute and save effective genHead based on current mode
-    const op = state.operators.find(o => o.id === operatorId);
-    const entryWithHead = { ...entry, genHead: entry.genHead ?? computeEffHead(op?.head, entry.type) };
-    await db.upsertDayEntry(sheet.id, day, entryWithHead);
-    const updated = { ...sheet, days: { ...sheet.days, [String(day)]: entryWithHead } };
+    await db.upsertDayEntry(sheet.id, day, entry);
+    const updated = { ...sheet, days: { ...sheet.days, [String(day)]: entry } };
     dispatch({ type: 'UPDATE_SHEET', payload: updated });
   };
 
@@ -126,38 +106,12 @@ export function ProductionProvider({ children }) {
 
   const deleteSheet = async (id) => { await db.removeSheet(id); dispatch({ type: 'DELETE_SHEET', payload: id }); };
 
-  // Compute effective head based on CURRENT mode (used when saving new entries)
-  const computeEffHead = (head, type) => {
+  const calcGenIncome = (production, head, type, rate) => {
     const mh = Number(head);
-    if (type === 'all_head') return mh;
-    if (type === 'alternet') {
-      const used = mh / 2;
-      return genIncomeMode === 'half_remaining' ? used + (mh - used) / 2 : used;
-    }
-    if (type === 'duble_alternet') {
-      const used = mh / 3;
-      return genIncomeMode === 'half_remaining' ? used + (mh - used) / 2 : used;
-    }
-    return mh;
-  };
-
-  // Standard fallback for old entries (no genHead saved)
-  const standardEffHead = (head, type) => {
-    const mh = Number(head);
-    if (type === 'alternet') return mh / 2;
-    if (type === 'duble_alternet') return mh / 3;
-    return mh;
-  };
-
-  // Calculate gen income — uses SAVED genHead, fallback to standard (not current mode)
-  const calcGenIncome = (production, head, type, rate, savedGenHead) => {
-    const effectiveHead = savedGenHead != null ? Number(savedGenHead) : standardEffHead(head, type);
+    let effectiveHead = mh;
+    if (type === 'alternet') effectiveHead = mh / 2;
+    else if (type === 'duble_alternet') effectiveHead = mh / 3;
     return (Number(production) / 1000) * Number(rate) * effectiveHead;
-  };
-
-  // Get effective head for display — uses SAVED genHead, fallback to standard
-  const getEffectiveHead = (head, type, savedGenHead) => {
-    return savedGenHead != null ? Number(savedGenHead) : standardEffHead(head, type);
   };
 
   return (
@@ -166,7 +120,7 @@ export function ProductionProvider({ children }) {
       addHelper, deleteHelper, getHelperName,
       addOperator, deleteOperator, getOperator,
       ensureSheet, addDayEntry, deleteDayEntry, deleteSheet,
-      calcGenIncome, getEffectiveHead, genIncomeMode, setGenIncomeMode, loadData,
+      calcGenIncome, loadData,
     }}>
       {children}
     </ProductionContext.Provider>

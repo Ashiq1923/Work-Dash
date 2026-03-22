@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { useProduction } from '../context/ProductionContext';
 import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/FormField';
 import { Modal } from '../components/ui/Modal';
@@ -43,7 +42,6 @@ function RegisterForm({ onSave, onCancel }) {
 export default function Settings() {
   const { theme, toggleTheme } = useTheme();
   const { profile: userProfile, users, logout, updateProfile, registerUser, deleteUser, changePassword, isAdmin, isLoggedIn } = useAuth();
-  const { genIncomeMode, setGenIncomeMode } = useProduction();
   const [showRegister, setShowRegister] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(null); // userId or null
 
@@ -138,32 +136,6 @@ export default function Settings() {
             </button>
           </div>
           <p className="settings-hint">Current mode: <strong>{theme}</strong></p>
-        </div>
-
-        {/* Gen Income Logic */}
-        <div className="card">
-          <h3 className="settings-section-title">Gen Income Logic</h3>
-          <p className="settings-desc" style={{ marginBottom: 12 }}>How Alternet / Duble Alternet heads are calculated for Gen Income.</p>
-          <div className="settings-radio-group">
-            <label className={`settings-radio-card ${genIncomeMode === 'half_remaining' ? 'settings-radio-card--active' : ''}`} onClick={() => { setGenIncomeMode('half_remaining'); toast.success('Mode: Half Remaining'); }}>
-              <input type="radio" name="genMode" checked={genIncomeMode === 'half_remaining'} readOnly />
-              <div>
-                <p className="settings-radio-card__title">Half Remaining</p>
-                <p className="settings-radio-card__desc">Used heads + half of band heads (party deal)</p>
-                <p className="settings-radio-card__example">24H Alt: 12 + 6 = <strong>18</strong> | D.Alt: 8 + 8 = <strong>16</strong></p>
-                <p className="settings-radio-card__example">30H Alt: 15 + 7.5 = <strong>22.5</strong> | D.Alt: 10 + 10 = <strong>20</strong></p>
-              </div>
-            </label>
-            <label className={`settings-radio-card ${genIncomeMode === 'standard' ? 'settings-radio-card--active' : ''}`} onClick={() => { setGenIncomeMode('standard'); toast.success('Mode: Standard'); }}>
-              <input type="radio" name="genMode" checked={genIncomeMode === 'standard'} readOnly />
-              <div>
-                <p className="settings-radio-card__title">Standard</p>
-                <p className="settings-radio-card__desc">Only used heads count (no remaining split)</p>
-                <p className="settings-radio-card__example">24H Alt: <strong>12</strong> | D.Alt: <strong>8</strong></p>
-                <p className="settings-radio-card__example">30H Alt: <strong>15</strong> | D.Alt: <strong>10</strong></p>
-              </div>
-            </label>
-          </div>
         </div>
 
         {/* Profile Edit */}
