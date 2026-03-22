@@ -27,6 +27,23 @@ export function ProductionProvider({ children }) {
   const { currentUser, activeDataKey } = useAuth();
   const [state, dispatch] = useReducer(reducer, INITIAL);
   const [loading, setLoading] = useState(true);
+  const [genIncomeMode, setGenIncomeModeState] = useState('half_remaining');
+
+  // Load gen income mode per user from Supabase settings
+  useEffect(() => {
+    if (!activeDataKey) return;
+    db.fetchSettings(activeDataKey).then(s => {
+      setGenIncomeModeState(s?.settings?.genIncomeMode || 'half_remaining');
+    });
+  }, [activeDataKey]);
+
+  const setGenIncomeMode = async (mode) => {
+    setGenIncomeModeState(mode);
+    if (activeDataKey) {
+      const existing = await db.fetchSettings(activeDataKey);
+      await db.upsertSettings(activeDataKey, { settings: { ...(existing?.settings || {}), genIncomeMode: mode } });
+    }
+  };
 
   const loadData = useCallback(async () => {
     if (!activeDataKey) { dispatch({ type: 'SET_HELPERS', payload: [] }); dispatch({ type: 'SET_OPERATORS', payload: [] }); dispatch({ type: 'SET_SHEETS', payload: [] }); setLoading(false); return; }
@@ -109,9 +126,41 @@ export function ProductionProvider({ children }) {
   const calcGenIncome = (production, head, type, rate) => {
     const mh = Number(head);
     let effectiveHead = mh;
-    if (type === 'alternet') effectiveHead = mh / 2;
-    else if (type === 'duble_alternet') effectiveHead = mh / 3;
+    if (type === 'alternet') {
+      const used = mh / 2;
+      if (genIncomeMode === 'half_remaining') {
+        // Used heads + half of remaining (e.g. 24: 12+6=18)
+        effectiveHead = used + (mh - used) / 2;
+      } else {
+        // Standard: just the used heads (e.g. 24: 12)
+        effectiveHead = used;
+      }
+    } else if (type === 'duble_alternet') {
+      const used = mh / 3;
+      if (genIncomeMode === 'half_remaining') {
+        // Used heads + half of remaining (e.g. 24: 8+8=16)
+        effectiveHead = used + (mh - used) / 2;
+      } else {
+        // Standard: just the used heads (e.g. 24: 8)
+        effectiveHead = used;
+      }
+    }
     return (Number(production) / 1000) * Number(rate) * effectiveHead;
+  };
+
+  // Get effective head count for display (e.g. "18 Head" instead of "Alternet")
+  const getEffectiveHead = (head, type) => {
+    const mh = Number(head);
+    if (type === 'all_head') return mh;
+    if (type === 'alternet') {
+      const used = mh / 2;
+      return genIncomeMode === 'half_remaining' ? used + (mh - used) / 2 : used;
+    }
+    if (type === 'duble_alternet') {
+      const used = mh / 3;
+      return genIncomeMode === 'half_remaining' ? used + (mh - used) / 2 : used;
+    }
+    return mh;
   };
 
   return (
@@ -120,7 +169,7 @@ export function ProductionProvider({ children }) {
       addHelper, deleteHelper, getHelperName,
       addOperator, deleteOperator, getOperator,
       ensureSheet, addDayEntry, deleteDayEntry, deleteSheet,
-      calcGenIncome, loadData,
+      calcGenIncome, getEffectiveHead, genIncomeMode, setGenIncomeMode, loadData,
     }}>
       {children}
     </ProductionContext.Provider>
