@@ -71,7 +71,7 @@ export default function Login() {
             </div>
           </div>
 
-          <Button type="submit" className="login-btn">Sign In</Button>
+          <Button type="submit" className="login-btn" disabled={loading}>{loading ? 'Signing in...' : 'Sign In'}</Button>
         </form>
 
         <p className="login-footer">All data is stored locally in your browser.</p>

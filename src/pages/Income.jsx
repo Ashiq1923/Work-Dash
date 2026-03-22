@@ -538,7 +538,7 @@ export default function Income() {
   };
 
   const handleDeleteParty = (id) => {
-    if (allEntries.some(e => e.partyId === id)) { toast.error('Cannot delete party with existing articles'); return; }
+    if (entries.some(e => e.partyId === id)) { toast.error('Cannot delete party with existing articles'); return; }
     if (window.confirm('Delete this party?')) { deleteParty(id); toast.success('Party deleted'); }
   };
 
