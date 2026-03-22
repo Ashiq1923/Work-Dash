@@ -190,7 +190,7 @@ function printSheet(sheet, op, numDays, monthNum, getHelperName, calcGenIncome) 
     const gi = calcGenIncome(dd.production, op.head, dd.type, dd.rate, dd.genHead);
     totalProd += Number(dd.production); totalGI += gi;
     const hn = dd.useDefaultHelper ? getHelperName(op.defaultHelperId) : getHelperName(dd.extraHelperId) + ' (D)';
-    const tl = dd.type === 'alternet' ? 'Alt' : dd.type === 'duble_alternet' ? 'D.Alt' : 'All';
+    const tl = dd.genHead != null ? `${dd.genHead}H` : (dd.type === 'alternet' ? `${op.head/2}H` : dd.type === 'duble_alternet' ? `${Math.round(op.head/3)}H` : `${op.head}H`);
     rows.push(`<tr><td>${d}-${monthNum}</td><td>${hn}</td><td>${Number(dd.production).toLocaleString()}</td><td>${tl}</td><td>${Number(dd.rate).toFixed(2)}</td><td><strong>${gi.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</strong></td></tr>`);
   }
   const html = `<!DOCTYPE html><html><head><title>${op.name} - ${op.machine}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;padding:30px;color:#111}.header{margin-bottom:16px;border-bottom:2px solid #333;padding-bottom:12px}.header h1{font-size:18px;margin-bottom:4px}.meta{display:flex;gap:20px;font-size:12px;color:#444}.meta strong{color:#111}table{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px}th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}th{background:#f0f0f0;font-weight:600}.empty td{color:#aaa}.total td{font-weight:700;border-top:2px solid #333}@media print{body{padding:10px}}</style></head><body><div class="header"><h1>${op.name} — ${op.machine}</h1><div class="meta"><span>Head: <strong>${op.head}</strong></span><span>Helper: <strong>${getHelperName(op.defaultHelperId)}</strong></span><span>Month: <strong>${sheet.month}</strong></span></div></div><table><thead><tr><th>Date</th><th>Helper</th><th>Production</th><th>Type</th><th>Rate</th><th>Gen Income</th></tr></thead><tbody>${rows.join('')}</tbody><tfoot><tr class="total"><td colspan="2" style="text-align:right">Total:</td><td>${totalProd.toLocaleString()}</td><td colspan="2"></td><td>${totalGI.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr></tfoot></table></body></html>`;
@@ -251,7 +251,7 @@ export default function Production() {
       if (!dd) continue;
       const gi = calcGenIncome(dd.production, op.head, dd.type, dd.rate, dd.genHead);
       totalProd += Number(dd.production); totalGI += gi;
-      rows.push({ Date: `${d}-${monthNum}`, Helper: dd.useDefaultHelper ? getHelperName(op.defaultHelperId) : getHelperName(dd.extraHelperId) + ' (D)', Production: dd.production, Type: dd.type === 'alternet' ? 'Alt' : dd.type === 'duble_alternet' ? 'D.Alt' : 'All', Rate: dd.rate, 'Gen Income': gi.toFixed(2) });
+      rows.push({ Date: `${d}-${monthNum}`, Helper: dd.useDefaultHelper ? getHelperName(op.defaultHelperId) : getHelperName(dd.extraHelperId) + ' (D)', Production: dd.production, Head: dd.genHead != null ? `${dd.genHead}H` : `${dd.type === 'alternet' ? op.head/2 : dd.type === 'duble_alternet' ? Math.round(op.head/3) : op.head}H`, Rate: dd.rate, 'Gen Income': gi.toFixed(2) });
     }
     rows.push({ Date: 'TOTAL', Helper: '', Production: totalProd, Type: '', Rate: '', 'Gen Income': totalGI.toFixed(2) });
     exportToExcel({ [`${op.name}_${op.machine}`]: rows }, `${op.name}_${op.machine}_${monthFilter}`);
@@ -267,7 +267,7 @@ export default function Production() {
         const dd = sheet.days[String(d)];
         if (!dd) continue;
         const gi = calcGenIncome(dd.production, op.head, dd.type, dd.rate, dd.genHead);
-        rows.push({ Machine: op.machine, Operator: op.name, Head: op.head, Helper: dd.useDefaultHelper ? getHelperName(op.defaultHelperId) : getHelperName(dd.extraHelperId) + ' (D)', Date: `${d}-${monthNum}`, Production: dd.production, Type: dd.type === 'alternet' ? 'Alt' : dd.type === 'duble_alternet' ? 'D.Alt' : 'All', Rate: dd.rate, 'Gen Income': gi.toFixed(2) });
+        rows.push({ Machine: op.machine, Operator: op.name, Head: op.head, Helper: dd.useDefaultHelper ? getHelperName(op.defaultHelperId) : getHelperName(dd.extraHelperId) + ' (D)', Date: `${d}-${monthNum}`, Production: dd.production, Head: dd.genHead != null ? `${dd.genHead}H` : `${dd.type === 'alternet' ? op.head/2 : dd.type === 'duble_alternet' ? Math.round(op.head/3) : op.head}H`, Rate: dd.rate, 'Gen Income': gi.toFixed(2) });
       }
     });
     exportToExcel({ Production: rows }, `production_${monthFilter}`);
@@ -338,7 +338,7 @@ export default function Production() {
                   <div className="prod-sheet__body">
                     <div className="table-wrapper">
                       <table className="data-table prod-day-table">
-                        <thead><tr><th>Date</th><th>Helper</th><th>Production</th><th>Type</th><th>Rate</th><th>Substitute</th><th>Gen Income</th><th></th></tr></thead>
+                        <thead><tr><th>Date</th><th>Helper</th><th>Production</th><th>Head</th><th>Rate</th><th>Substitute</th><th>Gen Income</th><th></th></tr></thead>
                         <tbody>
                           {Array.from({ length: numDays }, (_, i) => i + 1).map(day => {
                             const dd = sheet.days[String(day)];
@@ -350,7 +350,7 @@ export default function Production() {
                             }
                             const gi = calcGenIncome(dd.production, op.head, dd.type, dd.rate, dd.genHead);
                             const hn = dd.useDefaultHelper ? getHelperName(op.defaultHelperId) : getHelperName(dd.extraHelperId) + ' (D)';
-                            const tl = dd.type === 'alternet' ? 'Alt' : dd.type === 'duble_alternet' ? 'D.Alt' : 'All';
+                            const tl = dd.genHead != null ? `${dd.genHead}H` : (dd.type === 'alternet' ? `${op.head/2}H` : dd.type === 'duble_alternet' ? `${Math.round(op.head/3)}H` : `${op.head}H`);
                             const subOp = dd.substituteOperatorId ? getOperator(dd.substituteOperatorId) : null;
                             return (
                               <tr key={day} className={dd.substituteOperatorId ? 'prod-substitute-row' : ''}>
