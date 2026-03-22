@@ -106,11 +106,16 @@ export function ProductionProvider({ children }) {
 
   const deleteSheet = async (id) => { await db.removeSheet(id); dispatch({ type: 'DELETE_SHEET', payload: id }); };
 
-  const calcGenIncome = (production, head, type, rate) => {
-    const mh = Number(head);
-    let effectiveHead = mh;
-    if (type === 'alternet') effectiveHead = mh / 2;
-    else if (type === 'duble_alternet') effectiveHead = mh / 3;
+  const calcGenIncome = (production, head, type, rate, savedGenHead) => {
+    let effectiveHead;
+    if (savedGenHead != null) {
+      effectiveHead = Number(savedGenHead);
+    } else {
+      const mh = Number(head);
+      effectiveHead = mh;
+      if (type === 'alternet') effectiveHead = mh / 2;
+      else if (type === 'duble_alternet') effectiveHead = mh / 3;
+    }
     return (Number(production) / 1000) * Number(rate) * effectiveHead;
   };
 

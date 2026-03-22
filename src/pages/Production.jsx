@@ -46,8 +46,16 @@ function OperatorForm({ helpers, onSave, onCancel }) {
 
 /* ─── Add Entry Form ─── */
 function EntryForm({ operators, helpers, sheets, month, getHelperName, onSave, onCancel }) {
-  const [form, setForm] = useState({ operatorId: '', useDefaultHelper: true, extraHelperId: '', production: '', type: 'alternet', rate: '', day: '', isSubstitute: false, substituteOperatorId: '' });
+  const [form, setForm] = useState({ operatorId: '', useDefaultHelper: true, extraHelperId: '', production: '', type: 'alternet', rate: '', day: '', isSubstitute: false, substituteOperatorId: '', headMode: 'standard' });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  // Compute effective head based on mode
+  const getFormHead = (mh, type, mode) => {
+    const head = Number(mh);
+    if (type === 'all_head') return head;
+    if (type === 'alternet') { const u = head / 2; return mode === 'half_remaining' ? u + (head - u) / 2 : u; }
+    if (type === 'duble_alternet') { const u = head / 3; return mode === 'half_remaining' ? u + (head - u) / 2 : u; }
+    return head;
+  };
   const selectedOp = operators.find(o => o.id === form.operatorId);
   const defaultHelperName = selectedOp ? getHelperName(selectedOp.defaultHelperId) : '';
   const otherHelpers = selectedOp ? helpers.filter(h => h.id !== selectedOp.defaultHelperId) : [];
@@ -74,7 +82,8 @@ function EntryForm({ operators, helpers, sheets, month, getHelperName, onSave, o
       if (!form.rate) { toast.error('Rate required'); return; }
       if (!form.day) { toast.error('Select date'); return; }
       if (form.isSubstitute && !form.substituteOperatorId) { toast.error('Select substitute operator'); return; }
-      onSave({ operatorId: form.operatorId, day: Number(form.day), entry: { production: Number(form.production), useDefaultHelper: form.useDefaultHelper, extraHelperId: form.useDefaultHelper ? null : (form.extraHelperId || null), type: form.type, rate: Number(form.rate), substituteOperatorId: form.isSubstitute ? form.substituteOperatorId : null } });
+      const effHead = selectedOp ? getFormHead(selectedOp.head, form.type, form.headMode) : null;
+      onSave({ operatorId: form.operatorId, day: Number(form.day), entry: { production: Number(form.production), useDefaultHelper: form.useDefaultHelper, extraHelperId: form.useDefaultHelper ? null : (form.extraHelperId || null), type: form.type, rate: Number(form.rate), substituteOperatorId: form.isSubstitute ? form.substituteOperatorId : null, genHead: effHead } });
       set('day', ''); set('production', '');
     }} className="form-grid">
       <Select label="Operator" value={form.operatorId} onChange={e => { set('operatorId', e.target.value); set('day', ''); }}>
@@ -91,7 +100,22 @@ function EntryForm({ operators, helpers, sheets, month, getHelperName, onSave, o
           {!form.useDefaultHelper && (<Select label="Other Helper (D)" value={form.extraHelperId} onChange={e => set('extraHelperId', e.target.value)}><option value="">-- Select --</option>{otherHelpers.map(h => <option key={h.id} value={h.id}>{h.name} (D)</option>)}</Select>)}
         </div>
         <Input label="Production *" type="number" min="0" value={form.production} onChange={e => set('production', e.target.value)} placeholder="e.g. 650000" required />
-        <Select label="Type" value={form.type} onChange={e => set('type', e.target.value)}><option value="alternet">Alternet</option><option value="duble_alternet">Duble Alternet</option><option value="all_head">All Head</option></Select>
+        <Select label="Head Type" value={form.type} onChange={e => set('type', e.target.value)}>
+          <option value="alternet">{selectedOp ? `${selectedOp.head / 2} Head` : 'Alternet'}</option>
+          <option value="duble_alternet">{selectedOp ? `${Math.round(selectedOp.head / 3)} Head` : 'D.Alternet'}</option>
+          <option value="all_head">{selectedOp ? `${selectedOp.head} Head` : 'All Head'}</option>
+        </Select>
+        <div style={{ gridColumn: '1/-1', display: 'flex', gap: 16, alignItems: 'center' }}>
+          <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Gen Income Head:</span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.8rem', cursor: 'pointer' }}>
+            <input type="radio" name="headMode" checked={form.headMode === 'standard'} onChange={() => set('headMode', 'standard')} style={{ accentColor: 'var(--color-accent)' }} />
+            Standard {selectedOp && form.type !== 'all_head' ? `(${getFormHead(selectedOp.head, form.type, 'standard')}H)` : ''}
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.8rem', cursor: 'pointer' }}>
+            <input type="radio" name="headMode" checked={form.headMode === 'half_remaining'} onChange={() => set('headMode', 'half_remaining')} style={{ accentColor: 'var(--color-accent)' }} />
+            Half Remaining {selectedOp && form.type !== 'all_head' ? `(${getFormHead(selectedOp.head, form.type, 'half_remaining')}H)` : ''}
+          </label>
+        </div>
         <Input label="Rate *" type="number" min="0" step="0.01" value={form.rate} onChange={e => set('rate', e.target.value)} placeholder="e.g. 1.40" required />
         <div className="sheet-substitute-section" style={{ gridColumn: '1/-1' }}>
           <label className="sheet-helper-check"><input type="checkbox" checked={form.isSubstitute} onChange={e => { set('isSubstitute', e.target.checked); if (!e.target.checked) set('substituteOperatorId', ''); }} /><span>Operator Absent — Worked by substitute</span></label>
@@ -158,7 +182,7 @@ function printSheet(sheet, op, numDays, monthNum, getHelperName, calcGenIncome) 
   for (let d = 1; d <= numDays; d++) {
     const dd = sheet.days[String(d)];
     if (!dd) { rows.push(`<tr class="empty"><td>${d}-${monthNum}</td><td colspan="5">—</td></tr>`); continue; }
-    const gi = calcGenIncome(dd.production, op.head, dd.type, dd.rate);
+    const gi = calcGenIncome(dd.production, op.head, dd.type, dd.rate, dd.genHead);
     totalProd += Number(dd.production); totalGI += gi;
     const hn = dd.useDefaultHelper ? getHelperName(op.defaultHelperId) : getHelperName(dd.extraHelperId) + ' (D)';
     const tl = dd.type === 'alternet' ? 'Alt' : dd.type === 'duble_alternet' ? 'D.Alt' : 'All';
@@ -220,7 +244,7 @@ export default function Production() {
     for (let d = 1; d <= numDays; d++) {
       const dd = sheet.days[String(d)];
       if (!dd) continue;
-      const gi = calcGenIncome(dd.production, op.head, dd.type, dd.rate);
+      const gi = calcGenIncome(dd.production, op.head, dd.type, dd.rate, dd.genHead);
       totalProd += Number(dd.production); totalGI += gi;
       rows.push({ Date: `${d}-${monthNum}`, Helper: dd.useDefaultHelper ? getHelperName(op.defaultHelperId) : getHelperName(dd.extraHelperId) + ' (D)', Production: dd.production, Type: dd.type === 'alternet' ? 'Alt' : dd.type === 'duble_alternet' ? 'D.Alt' : 'All', Rate: dd.rate, 'Gen Income': gi.toFixed(2) });
     }
@@ -237,7 +261,7 @@ export default function Production() {
       for (let d = 1; d <= numDays; d++) {
         const dd = sheet.days[String(d)];
         if (!dd) continue;
-        const gi = calcGenIncome(dd.production, op.head, dd.type, dd.rate);
+        const gi = calcGenIncome(dd.production, op.head, dd.type, dd.rate, dd.genHead);
         rows.push({ Machine: op.machine, Operator: op.name, Head: op.head, Helper: dd.useDefaultHelper ? getHelperName(op.defaultHelperId) : getHelperName(dd.extraHelperId) + ' (D)', Date: `${d}-${monthNum}`, Production: dd.production, Type: dd.type === 'alternet' ? 'Alt' : dd.type === 'duble_alternet' ? 'D.Alt' : 'All', Rate: dd.rate, 'Gen Income': gi.toFixed(2) });
       }
     });
@@ -249,7 +273,7 @@ export default function Production() {
   if (prodLoading) return <div className="page-container"><PageLoader text="Loading Production..." /></div>;
 
   let grandProd = 0, grandGI = 0;
-  monthSheets.forEach(s => { const op = getOperator(s.operatorId); if (!op) return; Object.values(s.days).forEach(d => { grandProd += Number(d.production || 0); grandGI += calcGenIncome(d.production, op.head, d.type, d.rate); }); });
+  monthSheets.forEach(s => { const op = getOperator(s.operatorId); if (!op) return; Object.values(s.days).forEach(d => { grandProd += Number(d.production || 0); grandGI += calcGenIncome(d.production, op.head, d.type, d.rate, d.genHead); }); });
 
   return (
     <div className="page-container">
@@ -285,7 +309,7 @@ export default function Production() {
             if (!op) return null;
             const isOpen = openSheets[sheet.id] ?? false;
             let totalProd = 0, totalGI = 0;
-            for (let d = 1; d <= numDays; d++) { const dd = sheet.days[String(d)]; if (!dd) continue; totalProd += Number(dd.production || 0); totalGI += calcGenIncome(dd.production, op.head, dd.type, dd.rate); }
+            for (let d = 1; d <= numDays; d++) { const dd = sheet.days[String(d)]; if (!dd) continue; totalProd += Number(dd.production || 0); totalGI += calcGenIncome(dd.production, op.head, dd.type, dd.rate, dd.genHead); }
             const filledDays = Object.keys(sheet.days).length;
             return (
               <div key={sheet.id} className="prod-sheet card">
@@ -319,7 +343,7 @@ export default function Production() {
                             if (editingRow?.sheetId === sheet.id && editingRow?.day === day) {
                               return <EditRow key={day} day={day} monthNum={monthNum} dd={dd} helpers={helpers} op={op} operators={operators} getHelperName={getHelperName} onSave={entry => handleEditSave(sheet.id, day, entry)} onCancel={() => setEditingRow(null)} />;
                             }
-                            const gi = calcGenIncome(dd.production, op.head, dd.type, dd.rate);
+                            const gi = calcGenIncome(dd.production, op.head, dd.type, dd.rate, dd.genHead);
                             const hn = dd.useDefaultHelper ? getHelperName(op.defaultHelperId) : getHelperName(dd.extraHelperId) + ' (D)';
                             const tl = dd.type === 'alternet' ? 'Alt' : dd.type === 'duble_alternet' ? 'D.Alt' : 'All';
                             const subOp = dd.substituteOperatorId ? getOperator(dd.substituteOperatorId) : null;
