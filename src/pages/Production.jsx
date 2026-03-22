@@ -45,7 +45,7 @@ function OperatorForm({ helpers, onSave, onCancel }) {
 }
 
 /* ─── Add Entry Form ─── */
-function EntryForm({ operators, helpers, sheets, month, getHelperName, onSave, onCancel }) {
+function EntryForm({ operators, helpers, sheets, month, getHelperName, genIncomeMode, setGenIncomeMode, getEffectiveHead, onSave, onCancel }) {
   const [form, setForm] = useState({ operatorId: '', useDefaultHelper: true, extraHelperId: '', production: '', type: 'alternet', rate: '', day: '', isSubstitute: false, substituteOperatorId: '' });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const selectedOp = operators.find(o => o.id === form.operatorId);
@@ -91,8 +91,17 @@ function EntryForm({ operators, helpers, sheets, month, getHelperName, onSave, o
           {!form.useDefaultHelper && (<Select label="Other Helper (D)" value={form.extraHelperId} onChange={e => set('extraHelperId', e.target.value)}><option value="">-- Select --</option>{otherHelpers.map(h => <option key={h.id} value={h.id}>{h.name} (D)</option>)}</Select>)}
         </div>
         <Input label="Production *" type="number" min="0" value={form.production} onChange={e => set('production', e.target.value)} placeholder="e.g. 650000" required />
-        <Select label="Type" value={form.type} onChange={e => set('type', e.target.value)}><option value="alternet">Alternet</option><option value="duble_alternet">Duble Alternet</option><option value="all_head">All Head</option></Select>
+        <Select label={`Head (${genIncomeMode === 'half_remaining' ? 'Half Remaining' : 'Standard'})`} value={form.type} onChange={e => set('type', e.target.value)}>
+          <option value="alternet">{selectedOp ? getEffectiveHead(selectedOp.head, 'alternet') : '?'}H — Alternet</option>
+          <option value="duble_alternet">{selectedOp ? getEffectiveHead(selectedOp.head, 'duble_alternet') : '?'}H — D.Alternet</option>
+          <option value="all_head">{selectedOp ? selectedOp.head : '?'}H — All Head</option>
+        </Select>
         <Input label="Rate *" type="number" min="0" step="0.01" value={form.rate} onChange={e => set('rate', e.target.value)} placeholder="e.g. 1.40" required />
+        <div style={{ gridColumn: '1/-1', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-secondary)' }}>Mode:</span>
+          <button type="button" className={`badge ${genIncomeMode === 'half_remaining' ? 'badge--accent' : 'badge--default'}`} style={{ cursor: 'pointer' }} onClick={() => setGenIncomeMode('half_remaining')}>Half Remaining</button>
+          <button type="button" className={`badge ${genIncomeMode === 'standard' ? 'badge--accent' : 'badge--default'}`} style={{ cursor: 'pointer' }} onClick={() => setGenIncomeMode('standard')}>Standard</button>
+        </div>
         <div className="sheet-substitute-section" style={{ gridColumn: '1/-1' }}>
           <label className="sheet-helper-check"><input type="checkbox" checked={form.isSubstitute} onChange={e => { set('isSubstitute', e.target.checked); if (!e.target.checked) set('substituteOperatorId', ''); }} /><span>Operator Absent — Worked by substitute</span></label>
           {form.isSubstitute && (
@@ -174,7 +183,7 @@ function daysInMonth(mk) { const [y, m] = mk.split('-').map(Number); return new 
 
 /* ─── Main ─── */
 export default function Production() {
-  const { helpers, operators, sheets, loading: prodLoading, addHelper, deleteHelper, getHelperName, addOperator, deleteOperator, addDayEntry, deleteDayEntry, deleteSheet, calcGenIncome, getEffectiveHead, getOperator } = useProduction();
+  const { helpers, operators, sheets, loading: prodLoading, addHelper, deleteHelper, getHelperName, addOperator, deleteOperator, addDayEntry, deleteDayEntry, deleteSheet, calcGenIncome, getEffectiveHead, genIncomeMode, setGenIncomeMode, getOperator } = useProduction();
   const { activeDataKey } = useAuth();
 
   const [monthFilter, setMonthFilter] = useState(currentMonthKey());
@@ -354,7 +363,7 @@ export default function Production() {
       )}
 
       <Modal isOpen={showEntryForm} onClose={() => setShowEntryForm(false)} title="Add Production Entry">
-        <EntryForm operators={operators} helpers={helpers} sheets={sheets} month={monthFilter} getHelperName={getHelperName} onSave={handleAddEntry} onCancel={() => setShowEntryForm(false)} />
+        <EntryForm operators={operators} helpers={helpers} sheets={sheets} month={monthFilter} getHelperName={getHelperName} genIncomeMode={genIncomeMode} setGenIncomeMode={setGenIncomeMode} getEffectiveHead={getEffectiveHead} onSave={handleAddEntry} onCancel={() => setShowEntryForm(false)} />
       </Modal>
       <Modal isOpen={showManage} onClose={() => setShowManage(false)} title="Manage Helpers & Operators" size="lg">
         <div className="manage-section">
