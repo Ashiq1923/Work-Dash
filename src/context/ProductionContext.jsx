@@ -141,15 +141,23 @@ export function ProductionProvider({ children }) {
     return mh;
   };
 
-  // Calculate gen income — uses SAVED genHead if present, otherwise computes from current mode
+  // Standard fallback for old entries (no genHead saved)
+  const standardEffHead = (head, type) => {
+    const mh = Number(head);
+    if (type === 'alternet') return mh / 2;
+    if (type === 'duble_alternet') return mh / 3;
+    return mh;
+  };
+
+  // Calculate gen income — uses SAVED genHead, fallback to standard (not current mode)
   const calcGenIncome = (production, head, type, rate, savedGenHead) => {
-    const effectiveHead = savedGenHead != null ? Number(savedGenHead) : computeEffHead(head, type);
+    const effectiveHead = savedGenHead != null ? Number(savedGenHead) : standardEffHead(head, type);
     return (Number(production) / 1000) * Number(rate) * effectiveHead;
   };
 
-  // Get effective head for display — uses SAVED genHead if present
+  // Get effective head for display — uses SAVED genHead, fallback to standard
   const getEffectiveHead = (head, type, savedGenHead) => {
-    return savedGenHead != null ? Number(savedGenHead) : computeEffHead(head, type);
+    return savedGenHead != null ? Number(savedGenHead) : standardEffHead(head, type);
   };
 
   return (
