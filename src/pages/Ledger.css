@@ -1,0 +1,15 @@
+.ledger-sheets-list { display: flex; flex-direction: column; gap: 12px; }
+.ledger-sheet { overflow: hidden; }
+.ledger-sheet__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; flex-wrap: wrap; transition: background var(--transition-base); }
+.ledger-sheet__header:hover { background: var(--color-bg-tertiary); margin: -16px -20px; padding: 16px 20px; border-radius: var(--radius-lg); }
+.ledger-sheet__info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ledger-sheet__name { font-size: 1rem; color: var(--color-accent); }
+.ledger-sheet__summary { font-size: 0.8rem; font-weight: 600; color: var(--color-text-secondary); }
+.ledger-sheet__actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.ledger-sheet__body { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--color-border); }
+.ledger-table { font-size: 0.84rem; }
+.ledger-date { font-weight: 600; white-space: nowrap; }
+.ledger-debit-cell { color: var(--color-success); }
+.ledger-credit-cell { color: var(--color-danger); }
+.ledger-carry { background: var(--color-bg-tertiary); }
+@media (max-width: 640px) { .ledger-sheet__header { flex-direction: column; align-items: flex-start; } .ledger-sheet__header:hover { margin: -12px -16px; padding: 12px 16px; } }

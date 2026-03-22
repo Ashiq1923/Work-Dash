@@ -1,0 +1,28 @@
+.ss-list { display: flex; flex-direction: column; gap: 12px; }
+.ss-card { overflow: hidden; }
+.ss-card__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; flex-wrap: wrap; transition: background var(--transition-base); }
+.ss-card__header:hover { background: var(--color-bg-tertiary); margin: -16px -20px; padding: 16px 20px; border-radius: var(--radius-lg); }
+.ss-card__info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ss-card__summary { font-size: 0.8rem; font-weight: 600; color: var(--color-text-secondary); }
+.ss-card__actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.ss-card__body { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--color-border); }
+
+/* Details */
+.ss-details { display: flex; flex-direction: column; gap: 0; max-width: 500px; }
+.ss-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--color-border); font-size: 0.88rem; }
+.ss-row:last-child { border-bottom: none; }
+.ss-row__val { font-weight: 700; }
+.ss-row--highlight { background: var(--color-bg-tertiary); margin: 0 -14px; padding: 10px 14px; border-radius: var(--radius-sm); }
+.ss-row--net { background: var(--color-bg-secondary); margin: 8px -14px 0; padding: 14px; border-radius: var(--radius-md); border: 2px solid var(--color-border); font-size: 1rem; font-weight: 700; }
+
+/* Section title */
+.ss-section-title { font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-text-muted); margin: 0 0 10px; }
+.ss-empty { font-size: 0.85rem; color: var(--color-text-muted); padding: 12px 0; }
+
+/* Advances */
+.ss-adv-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); padding: 10px 0 4px; border-top: 1px dashed var(--color-border); margin-top: 6px; }
+.ss-adv-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--color-border); font-size: 0.85rem; }
+.ss-adv-row span:first-child { flex: 1; }
+.ss-adv-neg { color: var(--color-danger); font-weight: 700; min-width: 90px; text-align: right; }
+
+@media (max-width: 640px) { .ss-card__header { flex-direction: column; align-items: flex-start; } .ss-card__header:hover { margin: -12px -16px; padding: 12px 16px; } .ss-details { max-width: 100%; } }

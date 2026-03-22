@@ -1,0 +1,66 @@
+/* Salary Sheets */
+.salary-sheets-list { display: flex; flex-direction: column; gap: 12px; }
+.salary-sheet { overflow: hidden; }
+
+.salary-sheet__header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; cursor: pointer; flex-wrap: wrap;
+  transition: background var(--transition-base);
+}
+.salary-sheet__header:hover {
+  background: var(--color-bg-tertiary); margin: -16px -20px; padding: 16px 20px; border-radius: var(--radius-lg);
+}
+.salary-sheet__info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.salary-sheet__summary { font-size: 0.8rem; font-weight: 600; color: var(--color-text-secondary); }
+.salary-sheet__actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.salary-sheet__body { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--color-border); }
+
+/* Day table */
+.salary-day-table { font-size: 0.825rem; }
+.salary-day-table__day { font-weight: 700; width: 65px; text-align: center; }
+.salary-day-empty td { opacity: 0.4; }
+
+/* Sunday rows */
+.salary-sunday { background: var(--color-danger-bg, rgba(239,68,68,0.06)); }
+.salary-sunday-filled { background: var(--color-danger-bg, rgba(239,68,68,0.06)); }
+.salary-sunday-label {
+  text-align: center; font-style: italic; font-weight: 600;
+  color: var(--color-danger); font-size: 0.85rem;
+}
+.salary-sun-tag { color: var(--color-danger); font-weight: 600; font-size: 0.7rem; }
+
+/* Bonus rule */
+.salary-bonus-rule {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+/* Absent row */
+.salary-absent-row { background: rgba(239,68,68,0.04); }
+
+/* Substitute entry row (credited from another machine) */
+.salary-sub-row { background: rgba(99,102,241,0.08); border-left: 3px solid var(--color-accent); }
+
+/* Override/edited rows */
+.salary-override-row { background: rgba(99,102,241,0.04); }
+.salary-edited-tag { color: var(--color-accent); font-weight: 700; font-size: 0.7rem; }
+.salary-desc-cell { max-width: 200px; }
+.salary-desc { font-size: 0.8rem; color: var(--color-text-secondary); font-style: italic; }
+
+/* Edit row */
+.salary-edit-row { background: var(--color-bg-tertiary); }
+.salary-edit-input {
+  width: 120px; padding: 4px 8px;
+  border: 1px solid var(--color-accent); border-radius: var(--radius-sm);
+  background: var(--color-bg-primary); color: var(--color-text-primary);
+  font-size: 0.825rem; outline: none;
+}
+.salary-edit-input--wide { width: 100%; min-width: 180px; }
+.salary-edit-actions { display: flex; gap: 4px; }
+
+@media (max-width: 640px) {
+  .salary-sheet__header { flex-direction: column; align-items: flex-start; }
+  .salary-sheet__header:hover { margin: -12px -16px; padding: 12px 16px; }
+  .salary-edit-input--wide { min-width: 120px; }
+}

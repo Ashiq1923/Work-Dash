@@ -1,0 +1,104 @@
+.sidebar {
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  z-index: 210;
+  transition: width var(--transition-base);
+}
+
+.sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  height: var(--header-height);
+  border-bottom: 1px solid var(--color-border);
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.sidebar__logo {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-accent);
+  white-space: nowrap;
+}
+
+.sidebar__btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.sidebar__btn:hover {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 8px;
+  gap: 2px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.sidebar__link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: background var(--transition-base), color var(--transition-base);
+  white-space: nowrap;
+  text-decoration: none;
+}
+.sidebar__link:hover {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+.sidebar__link--active {
+  background: var(--color-accent-light);
+  color: var(--color-accent);
+}
+
+.sidebar--collapsed .sidebar__header {
+  justify-content: center;
+}
+.sidebar--collapsed .sidebar__link {
+  justify-content: center;
+  padding: 10px;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: var(--sidebar-width) !important;
+    height: 100vh;
+    transform: translateX(-100%);
+    transition: transform var(--transition-base);
+    z-index: 250;
+  }
+  .sidebar--mobile-open {
+    transform: translateX(0);
+  }
+  .sidebar--mobile-hidden {
+    transform: translateX(-100%);
+  }
+}

@@ -1,0 +1,104 @@
+/* Section Titles */
+.analytics-section-title {
+  font-size: 0.85rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--color-text-muted); margin: 20px 0 10px;
+}
+.analytics-section-title:first-of-type { margin-top: 0; }
+
+/* Expense Cards */
+.analytics-cards-row {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 8px;
+}
+
+.analytics-exp-card, .analytics-bill-card {
+  padding: 18px 20px; border-radius: var(--radius-lg);
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  display: flex; flex-direction: column; gap: 4px;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.analytics-exp-card:hover, .analytics-bill-card:hover {
+  transform: translateY(-2px); box-shadow: var(--shadow-lg);
+}
+
+.analytics-exp-card__label, .analytics-bill-card__label {
+  font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--color-text-muted);
+}
+.analytics-exp-card__value, .analytics-bill-card__value {
+  font-size: 1.3rem; font-weight: 800; line-height: 1.2;
+}
+.analytics-bill-card__sub {
+  font-size: 0.68rem; color: var(--color-text-muted); font-weight: 500;
+}
+
+/* Expense card colors */
+.analytics-exp-card--gexp .analytics-exp-card__value { color: #ef4444; }
+.analytics-exp-card--thread .analytics-exp-card__value { color: #f59e0b; }
+.analytics-exp-card--salary .analytics-exp-card__value { color: #8b5cf6; }
+.analytics-exp-card--total {
+  background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(139,92,246,0.08));
+  border-color: rgba(239,68,68,0.2);
+}
+.analytics-exp-card--total .analytics-exp-card__value { color: #ef4444; }
+
+/* Billing card colors */
+.analytics-bill-card--physical .analytics-bill-card__value { color: #3b82f6; }
+
+/* Salary detail inside card */
+.analytics-exp-card__detail {
+  display: flex; flex-direction: column; gap: 1px; margin-top: 4px;
+  font-size: 0.68rem; font-weight: 500; color: var(--color-text-muted);
+}
+.analytics-exp-card__adv { color: var(--color-danger); font-weight: 600; }
+.analytics-bill-card--production .analytics-bill-card__value { color: #10b981; }
+.analytics-bill-card--goal {
+  border-color: rgba(99,102,241,0.3);
+  background: linear-gradient(135deg, rgba(99,102,241,0.05), rgba(99,102,241,0.02));
+}
+.analytics-bill-card--profit .analytics-bill-card__value { color: #10b981; }
+.analytics-bill-card--loss .analytics-bill-card__value { color: #ef4444; }
+
+/* Goal Input */
+.analytics-goal-input { margin: 4px 0 2px; }
+.analytics-goal-field {
+  width: 100%; padding: 6px 10px; border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm); background: var(--color-bg-primary);
+  color: var(--color-text-primary); font-size: 1rem; font-weight: 700;
+  outline: none;
+}
+.analytics-goal-field::placeholder { color: var(--color-text-muted); font-weight: 400; font-size: 0.8rem; }
+.analytics-goal-field:focus { box-shadow: 0 0 0 2px rgba(99,102,241,0.2); }
+
+/* Pie Section */
+.analytics-pie-section { margin-top: 16px; }
+.analytics-title { font-size: 0.95rem; font-weight: 700; margin-bottom: 16px; }
+.analytics-pie-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: center; }
+.analytics-pie-chart { min-height: 320px; }
+
+/* Pie Legend (right side) */
+.analytics-pie-legend { display: flex; flex-direction: column; gap: 12px; }
+.analytics-pie-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: var(--radius-md);
+  background: var(--color-bg-tertiary); border: 1px solid var(--color-border);
+}
+.analytics-pie-item__color { width: 14px; height: 14px; border-radius: 4px; flex-shrink: 0; }
+.analytics-pie-item__info { flex: 1; display: flex; flex-direction: column; }
+.analytics-pie-item__name { font-size: 0.78rem; font-weight: 600; color: var(--color-text-secondary); }
+.analytics-pie-item__value { font-size: 0.95rem; font-weight: 800; color: var(--color-text-primary); }
+.analytics-pie-item__pct { font-size: 1.1rem; font-weight: 800; color: var(--color-text-primary); }
+
+.analytics-pie-total {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 12px 14px; border-radius: var(--radius-md);
+  background: var(--color-bg-secondary); border: 2px solid var(--color-border);
+  font-size: 0.82rem; font-weight: 600; color: var(--color-text-secondary);
+}
+
+@media (max-width: 1000px) {
+  .analytics-cards-row { grid-template-columns: repeat(2, 1fr); }
+  .analytics-pie-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .analytics-cards-row { grid-template-columns: 1fr; }
+}

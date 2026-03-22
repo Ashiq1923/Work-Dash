@@ -1,0 +1,21 @@
+/* G-Exp Ledger Table */
+.gexp-table { font-size: 0.84rem; }
+.gexp-date { font-weight: 600; white-space: nowrap; }
+.gexp-debit-cell { color: var(--color-success); }
+.gexp-credit-cell { color: var(--color-danger); }
+.gexp-debit-row { border-left: 3px solid var(--color-success); }
+.gexp-credit-row { border-left: 3px solid var(--color-danger); }
+.gexp-carry { background: var(--color-bg-tertiary); font-style: italic; }
+
+/* Type toggle in form */
+.gexp-type-toggle { grid-column: 1 / -1; }
+.gexp-type-btns { display: flex; gap: 0; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--color-border); }
+.gexp-type-btn {
+  flex: 1; padding: 8px 14px; border: none; cursor: pointer;
+  font-size: 0.82rem; font-weight: 600;
+  background: var(--color-bg-secondary); color: var(--color-text-secondary);
+  transition: all 0.15s;
+}
+.gexp-type-btn:hover { background: var(--color-bg-tertiary); }
+.gexp-type-btn--active-debit { background: rgba(16,185,129,0.15); color: var(--color-success); }
+.gexp-type-btn--active-credit { background: rgba(239,68,68,0.12); color: var(--color-danger); }

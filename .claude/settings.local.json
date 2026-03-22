@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create:*)",
+      "Bash(export PATH=\"/c/nodejs:$PATH\")",
+      "Bash(npx vite:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
