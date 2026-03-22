@@ -46,7 +46,7 @@ function OperatorForm({ helpers, onSave, onCancel }) {
 
 /* ─── Add Entry Form ─── */
 function EntryForm({ operators, helpers, sheets, month, getHelperName, onSave, onCancel }) {
-  const [form, setForm] = useState({ operatorId: '', useDefaultHelper: true, extraHelperId: '', production: '', type: 'alternet', rate: '', day: '', isSubstitute: false, substituteOperatorId: '', headMode: 'standard' });
+  const [form, setForm] = useState({ operatorId: '', useDefaultHelper: true, extraHelperId: '', production: '', type: 'alternet', rate: '', day: '', isSubstitute: false, substituteOperatorId: '', headMode: 'standard', customHead: '' });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   // Compute effective head based on mode
   const getFormHead = (mh, type, mode) => {
@@ -82,7 +82,7 @@ function EntryForm({ operators, helpers, sheets, month, getHelperName, onSave, o
       if (!form.rate) { toast.error('Rate required'); return; }
       if (!form.day) { toast.error('Select date'); return; }
       if (form.isSubstitute && !form.substituteOperatorId) { toast.error('Select substitute operator'); return; }
-      const effHead = selectedOp ? getFormHead(selectedOp.head, form.type, form.headMode) : null;
+      const effHead = form.headMode === 'custom' ? (Number(form.customHead) || null) : (selectedOp ? getFormHead(selectedOp.head, form.type, form.headMode) : null);
       onSave({ operatorId: form.operatorId, day: Number(form.day), entry: { production: Number(form.production), useDefaultHelper: form.useDefaultHelper, extraHelperId: form.useDefaultHelper ? null : (form.extraHelperId || null), type: form.type, rate: Number(form.rate), substituteOperatorId: form.isSubstitute ? form.substituteOperatorId : null, genHead: effHead } });
       set('day', ''); set('production', '');
     }} className="form-grid">
@@ -100,22 +100,27 @@ function EntryForm({ operators, helpers, sheets, month, getHelperName, onSave, o
           {!form.useDefaultHelper && (<Select label="Other Helper (D)" value={form.extraHelperId} onChange={e => set('extraHelperId', e.target.value)}><option value="">-- Select --</option>{otherHelpers.map(h => <option key={h.id} value={h.id}>{h.name} (D)</option>)}</Select>)}
         </div>
         <Input label="Production *" type="number" min="0" value={form.production} onChange={e => set('production', e.target.value)} placeholder="e.g. 650000" required />
-        <Select label="Head Type" value={form.type} onChange={e => set('type', e.target.value)}>
-          <option value="alternet">{selectedOp ? `${selectedOp.head / 2} Head` : 'Alternet'}</option>
-          <option value="duble_alternet">{selectedOp ? `${Math.round(selectedOp.head / 3)} Head` : 'D.Alternet'}</option>
-          <option value="all_head">{selectedOp ? `${selectedOp.head} Head` : 'All Head'}</option>
-        </Select>
-        <div style={{ gridColumn: '1/-1', display: 'flex', gap: 16, alignItems: 'center' }}>
-          <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Gen Income Head:</span>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.8rem', cursor: 'pointer' }}>
-            <input type="radio" name="headMode" checked={form.headMode === 'standard'} onChange={() => set('headMode', 'standard')} style={{ accentColor: 'var(--color-accent)' }} />
-            Standard {selectedOp && form.type !== 'all_head' ? `(${getFormHead(selectedOp.head, form.type, 'standard')}H)` : ''}
+        <div style={{ gridColumn: '1/-1', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Gen Head:</span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.8rem', cursor: 'pointer' }}>
+            <input type="radio" name="headMode" checked={form.headMode === 'standard'} onChange={() => set('headMode', 'standard')} style={{ accentColor: 'var(--color-accent)' }} />Standard
           </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.8rem', cursor: 'pointer' }}>
-            <input type="radio" name="headMode" checked={form.headMode === 'half_remaining'} onChange={() => set('headMode', 'half_remaining')} style={{ accentColor: 'var(--color-accent)' }} />
-            Half Remaining {selectedOp && form.type !== 'all_head' ? `(${getFormHead(selectedOp.head, form.type, 'half_remaining')}H)` : ''}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.8rem', cursor: 'pointer' }}>
+            <input type="radio" name="headMode" checked={form.headMode === 'half_remaining'} onChange={() => set('headMode', 'half_remaining')} style={{ accentColor: 'var(--color-accent)' }} />Half Remaining
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.8rem', cursor: 'pointer' }}>
+            <input type="radio" name="headMode" checked={form.headMode === 'custom'} onChange={() => set('headMode', 'custom')} style={{ accentColor: 'var(--color-accent)' }} />Custom
           </label>
         </div>
+        {form.headMode !== 'custom' ? (
+          <Select label="Head Type" value={form.type} onChange={e => set('type', e.target.value)}>
+            <option value="alternet">{selectedOp ? `${getFormHead(selectedOp.head, 'alternet', form.headMode)}` : '?'} Head</option>
+            <option value="duble_alternet">{selectedOp ? `${getFormHead(selectedOp.head, 'duble_alternet', form.headMode)}` : '?'} Head</option>
+            <option value="all_head">{selectedOp ? `${selectedOp.head}` : '?'} Head</option>
+          </Select>
+        ) : (
+          <Input label="Custom Head *" type="number" min="0" step="0.5" value={form.customHead} onChange={e => set('customHead', e.target.value)} placeholder="e.g. 18" required />
+        )}
         <Input label="Rate *" type="number" min="0" step="0.01" value={form.rate} onChange={e => set('rate', e.target.value)} placeholder="e.g. 1.40" required />
         <div className="sheet-substitute-section" style={{ gridColumn: '1/-1' }}>
           <label className="sheet-helper-check"><input type="checkbox" checked={form.isSubstitute} onChange={e => { set('isSubstitute', e.target.checked); if (!e.target.checked) set('substituteOperatorId', ''); }} /><span>Operator Absent — Worked by substitute</span></label>
